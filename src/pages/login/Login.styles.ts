@@ -59,6 +59,5 @@ export const GlassCard = styled(Card)(() => ({
   backgroundColor: "rgba(255,255,255,0.035)",
   border: "1px solid rgba(255,255,255,0.07)",
   backdropFilter: "blur(24px)",
-  boxShadow:
-    "0 0 0 1px rgba(108,75,230,0.1), 0 32px 80px rgba(0,0,0,0.7)",
+  boxShadow: "0 0 0 1px rgba(108,75,230,0.1), 0 32px 80px rgba(0,0,0,0.7)",
 }));

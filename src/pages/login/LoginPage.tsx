@@ -4,7 +4,6 @@ import {
   Button,
   CardContent,
   CircularProgress,
-  Divider,
   IconButton,
   InputAdornment,
   TextField,
@@ -46,7 +45,10 @@ export default function LoginPage() {
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!email || !password) { setError("Email e senha são obrigatórios."); return; }
+    if (!email || !password) {
+      setError("Email e senha são obrigatórios.");
+      return;
+    }
     setLoading(true);
     try {
       const data = await login({ email, password });
@@ -54,20 +56,18 @@ export default function LoginPage() {
       setTokenStore(data.access_token);
       navigate(ROUTES.mesa);
     } catch (err: any) {
-      setError(err?.response?.data?.message || "Credenciais inválidas ou erro no servidor.");
+      setError(
+        err?.response?.data?.message ||
+          "Credenciais inválidas ou erro no servidor."
+      );
     } finally {
       setLoading(false);
     }
   }
 
   const inputSx = {
-    "& .MuiInputLabel-root": {
-      color: "rgba(255,255,255,0.3)",
-      fontSize: 13.5,
-    },
-    "& .MuiInputLabel-root.Mui-focused": {
-      color: "rgba(160,130,255,0.8)",
-    },
+    "& .MuiInputLabel-root": { color: "rgba(255,255,255,0.3)", fontSize: 13.5 },
+    "& .MuiInputLabel-root.Mui-focused": { color: "rgba(160,130,255,0.8)" },
     "& .MuiOutlinedInput-root": {
       borderRadius: "10px",
       backgroundColor: "rgba(255,255,255,0.03)",
@@ -75,9 +75,15 @@ export default function LoginPage() {
       fontSize: 14,
       "& fieldset": { borderColor: "rgba(255,255,255,0.09)" },
       "&:hover fieldset": { borderColor: "rgba(255,255,255,0.18)" },
-      "&.Mui-focused fieldset": { borderColor: "rgba(120,85,255,0.55)", borderWidth: 1.5 },
+      "&.Mui-focused fieldset": {
+        borderColor: "rgba(120,85,255,0.55)",
+        borderWidth: 1.5,
+      },
     },
-    "& .MuiInputAdornment-root svg": { color: "rgba(255,255,255,0.22)", fontSize: 18 },
+    "& .MuiInputAdornment-root svg": {
+      color: "rgba(255,255,255,0.22)",
+      fontSize: 18,
+    },
   };
 
   return (
@@ -87,7 +93,6 @@ export default function LoginPage() {
       <Noise />
 
       <Container maxWidth="xs" sx={{ position: "relative", zIndex: 1 }}>
-
         {/* Header */}
         <Box sx={{ mb: 4 }}>
           <Typography
@@ -102,6 +107,7 @@ export default function LoginPage() {
           >
             RPG de Mesa
           </Typography>
+
           <Typography
             variant="h3"
             sx={{
@@ -117,7 +123,8 @@ export default function LoginPage() {
               component="span"
               sx={{
                 display: "block",
-                background: "linear-gradient(90deg, rgba(140,105,255,1) 0%, rgba(100,160,255,1) 100%)",
+                background:
+                  "linear-gradient(90deg, rgba(140,105,255,1) 0%, rgba(100,160,255,1) 100%)",
                 WebkitBackgroundClip: "text",
                 WebkitTextFillColor: "transparent",
               }}
@@ -141,18 +148,17 @@ export default function LoginPage() {
                   border: "1px solid rgba(220,60,60,0.18)",
                   color: "rgba(255,150,150,0.9)",
                   fontSize: 13,
-                  "& .MuiAlert-icon": { color: "rgba(255,110,110,0.7)", fontSize: 18 },
+                  "& .MuiAlert-icon": {
+                    color: "rgba(255,110,110,0.7)",
+                    fontSize: 18,
+                  },
                 }}
               >
                 {error}
               </Alert>
             )}
 
-            <Box
-              component="form"
-              onSubmit={handleLogin}
-              sx={{ display: "grid", gap: 1.8 }}
-            >
+            <Box component="form" onSubmit={handleLogin} sx={{ display: "grid", gap: 1.8 }}>
               <TextField
                 label="Email"
                 value={email}
@@ -189,11 +195,16 @@ export default function LoginPage() {
                         onClick={() => setShowPass((v) => !v)}
                         edge="end"
                         size="small"
-                        sx={{ color: "rgba(255,255,255,0.22)", "&:hover": { color: "rgba(255,255,255,0.5)" } }}
+                        sx={{
+                          color: "rgba(255,255,255,0.22)",
+                          "&:hover": { color: "rgba(255,255,255,0.5)" },
+                        }}
                       >
-                        {showPass
-                          ? <VisibilityOffRoundedIcon sx={{ fontSize: 18 }} />
-                          : <VisibilityRoundedIcon sx={{ fontSize: 18 }} />}
+                        {showPass ? (
+                          <VisibilityOffRoundedIcon sx={{ fontSize: 18 }} />
+                        ) : (
+                          <VisibilityRoundedIcon sx={{ fontSize: 18 }} />
+                        )}
                       </IconButton>
                     </InputAdornment>
                   ),
@@ -218,7 +229,8 @@ export default function LoginPage() {
                   boxShadow: "0 6px 24px rgba(100, 70, 230, 0.35)",
                   transition: "all 0.2s ease",
                   "&:hover": {
-                    background: "linear-gradient(135deg, #8B64FF 0%, #6B9FFF 100%)",
+                    background:
+                      "linear-gradient(135deg, #8B64FF 0%, #6B9FFF 100%)",
                     boxShadow: "0 10px 32px rgba(100, 70, 230, 0.5)",
                     transform: "translateY(-1px)",
                   },
@@ -241,10 +253,7 @@ export default function LoginPage() {
 
         {/* Rodapé */}
         <Box sx={{ mt: 3, textAlign: "center" }}>
-          <Typography
-            component="span"
-            sx={{ fontSize: 13, color: "rgba(255,255,255,0.3)" }}
-          >
+          <Typography component="span" sx={{ fontSize: 13, color: "rgba(255,255,255,0.3)" }}>
             Não tem conta?{" "}
           </Typography>
           <Typography
@@ -264,9 +273,7 @@ export default function LoginPage() {
         </Box>
 
         {apiBase && (
-          <Typography
-            sx={{ mt: 3, textAlign: "center", opacity: 0.25, fontSize: 11, wordBreak: "break-word" }}
-          >
+          <Typography sx={{ mt: 3, textAlign: "center", opacity: 0.25, fontSize: 11, wordBreak: "break-word" }}>
             {apiBase}
           </Typography>
         )}
