@@ -21,7 +21,7 @@ import VisibilityOffRoundedIcon from "@mui/icons-material/VisibilityOffRounded";
 
 import { useNavigate } from "react-router-dom";
 import { ROUTES } from "../../app/routes";
-import { createUser } from "../../shared/http/api";
+import { createUser } from "../../modules/auth/auth.api";
 
 import { SignUpWrapper, OrbTop, OrbBottom, Noise, GlassCard } from "./SignUp.styles";
 

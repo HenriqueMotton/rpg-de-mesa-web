@@ -17,17 +17,17 @@ import LockRoundedIcon from "@mui/icons-material/LockRounded";
 import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
 import VisibilityOffRoundedIcon from "@mui/icons-material/VisibilityOffRounded";
 
-import { setToken as setTokenLocal } from "../../shared/auth/token";
-import { useAppStore } from "../../app/store";
 import { useNavigate } from "react-router-dom";
 import { ROUTES } from "../../app/routes";
-import { login } from "../../shared/http/api";
+
+import { login } from "../../modules/auth/auth.api";
+import { useAuthStore } from "../../modules/auth/auth.store";
 
 import { LoginWrapper, OrbTop, OrbBottom, Noise, GlassCard } from "./Login.styles";
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const setTokenStore = useAppStore((s) => s.setToken);
+  const setAuthToken = useAuthStore((s) => s.setAuthToken);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -52,8 +52,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const data = await login({ email, password });
-      setTokenLocal(data.access_token);
-      setTokenStore(data.access_token);
+      setAuthToken(data.access_token);
       navigate(ROUTES.mesa);
     } catch (err: any) {
       setError(

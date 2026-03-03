@@ -1,12 +1,9 @@
 import axios from "axios";
-import { getToken, clearToken } from "../auth/token";
-
-const baseURL = import.meta.env.VITE_API_BASE_URL;
+import { getToken } from "../auth/token";
 
 export const http = axios.create({
-  baseURL,
-  timeout: 15000,
-  headers: { "Content-Type": "application/json" },
+  baseURL: import.meta.env.VITE_API_BASE_URL,
+  timeout: 20000,
 });
 
 http.interceptors.request.use((config) => {
@@ -17,14 +14,3 @@ http.interceptors.request.use((config) => {
   }
   return config;
 });
-
-http.interceptors.response.use(
-  (res) => res,
-  (error) => {
-    const status = error?.response?.status;
-    if (status === 401) {
-      clearToken();
-    }
-    return Promise.reject(error);
-  }
-);
