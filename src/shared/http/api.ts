@@ -1,12 +1,15 @@
 import { http } from "./http";
 
-export type HealthResponse = {
-  ok: boolean;
-  name?: string;
-  version?: string;
+export type LoginRequest = {
+  email: string;
+  password: string;
 };
 
-export async function healthCheck() {
-  const { data } = await http.get<HealthResponse>("/health");
+export type LoginResponse = {
+  access_token: string; // ajuste se sua API retornar diferente
+};
+
+export async function login(req: LoginRequest) {
+  const { data } = await http.post<LoginResponse>("/auth/login", req);
   return data;
 }
