@@ -10,11 +10,13 @@ import AppShell from "../layouts/AppShell";
 // import NotFoundPage from "../pages/NotFoundPage";
 import LoginPage from "../pages/login/LoginPage";
 import NotFoundPage from "../pages/NotFoundPage";
+import SignUpPage from "../pages/signUp/SignUpPage";
 
 import { getToken } from "../shared/auth/token";
 
 export const ROUTES = {
   login: "/login",
+  signup: "/signup",
   mesa: "/mesa",
   personagens: "/personagens",
   rolagens: "/rolagens",
@@ -30,7 +32,8 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 
 export const routes: RouteObject[] = [
   { path: ROUTES.login, element: <LoginPage /> },
-
+  { path: ROUTES.signup, element: <SignUpPage /> },
+  
   {
     path: "/",
     element: (

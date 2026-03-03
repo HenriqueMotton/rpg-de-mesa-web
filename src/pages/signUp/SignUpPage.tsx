@@ -4,66 +4,48 @@ import {
   Button,
   CardContent,
   CircularProgress,
+  Container,
   IconButton,
   InputAdornment,
   TextField,
   Typography,
   Box,
-  Container,
 } from "@mui/material";
 
+import PersonRoundedIcon from "@mui/icons-material/PersonRounded";
 import EmailRoundedIcon from "@mui/icons-material/EmailRounded";
 import LockRoundedIcon from "@mui/icons-material/LockRounded";
+import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
 import VisibilityOffRoundedIcon from "@mui/icons-material/VisibilityOffRounded";
 
-import { setToken as setTokenLocal } from "../../shared/auth/token";
-import { useAppStore } from "../../app/store";
 import { useNavigate } from "react-router-dom";
 import { ROUTES } from "../../app/routes";
-import { login } from "../../shared/http/api";
+import { createUser } from "../../shared/http/api";
 
-import { LoginWrapper, OrbTop, OrbBottom, Noise, GlassCard } from "./Login.styles";
+import { SignUpWrapper, OrbTop, OrbBottom, Noise, GlassCard } from "./SignUp.styles";
 
-export default function LoginPage() {
+export default function SignUpPage() {
   const navigate = useNavigate();
-  const setTokenStore = useAppStore((s) => s.setToken);
 
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const apiBase = import.meta.env.VITE_API_BASE_URL || "";
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const canSubmit = useMemo(
-    () => email.trim().length > 0 && password.trim().length > 0 && !loading,
-    [email, password, loading]
+    () =>
+      name.trim().length > 0 &&
+      email.trim().length > 0 &&
+      password.trim().length > 0 &&
+      !loading,
+    [name, email, password, loading]
   );
-
-  async function handleLogin(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    if (!email || !password) {
-      setError("Email e senha são obrigatórios.");
-      return;
-    }
-    setLoading(true);
-    try {
-      const data = await login({ email, password });
-      setTokenLocal(data.access_token);
-      setTokenStore(data.access_token);
-      navigate(ROUTES.mesa);
-    } catch (err: any) {
-      setError(
-        err?.response?.data?.message ||
-          "Credenciais inválidas ou erro no servidor."
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
 
   const inputSx = {
     "& .MuiInputLabel-root": { color: "rgba(255,255,255,0.3)", fontSize: 13.5 },
@@ -86,51 +68,59 @@ export default function LoginPage() {
     },
   };
 
+  async function handleSignUp(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSuccess(null);
+
+    if (!name || !email || !password) {
+      setError("Todos os campos são obrigatórios.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await createUser({ name, email, password });
+      setSuccess("Cadastro realizado com sucesso! Faça login para continuar.");
+      // opcional: volta automático pro login
+      setTimeout(() => navigate(ROUTES.login), 900);
+    } catch (err: any) {
+      setError(err?.response?.data?.message || "Erro ao cadastrar usuário.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
-    <LoginWrapper>
+    <SignUpWrapper>
       <OrbTop />
       <OrbBottom />
       <Noise />
 
       <Container maxWidth="xs" sx={{ position: "relative", zIndex: 1 }}>
-        <Box sx={{ mb: 4 }}>
-          <Typography
+        {/* Header */}
+        <Box sx={{ mb: 3, display: "flex", alignItems: "center", gap: 1 }}>
+          <IconButton
+            onClick={() => navigate(ROUTES.login)}
+            size="small"
             sx={{
-              fontSize: 11,
-              fontWeight: 700,
-              letterSpacing: 3,
-              textTransform: "uppercase",
-              color: "rgba(160,130,255,0.6)",
-              mb: 1.5,
+              color: "rgba(255,255,255,0.45)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              borderRadius: "10px",
+              "&:hover": { color: "rgba(255,255,255,0.75)" },
             }}
           >
-            RPG de Mesa
-          </Typography>
+            <ArrowBackRoundedIcon fontSize="small" />
+          </IconButton>
 
-          <Typography
-            variant="h3"
-            sx={{
-              fontWeight: 800,
-              letterSpacing: -1.5,
-              lineHeight: 1.05,
-              color: "rgba(255,255,255,0.93)",
-              fontSize: { xs: "2rem", sm: "2.4rem" },
-            }}
-          >
-            Bem-vindo
-            <Box
-              component="span"
-              sx={{
-                display: "block",
-                background:
-                  "linear-gradient(90deg, rgba(140,105,255,1) 0%, rgba(100,160,255,1) 100%)",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
-              }}
-            >
-              de volta.
-            </Box>
-          </Typography>
+          <Box>
+            <Typography sx={{ fontSize: 11, letterSpacing: 3, fontWeight: 700, color: "rgba(160,130,255,0.6)" }}>
+              CRIAR CONTA
+            </Typography>
+            <Typography sx={{ mt: 0.4, fontSize: 13, opacity: 0.7 }}>
+              Cadastre-se para acessar a mesa
+            </Typography>
+          </Box>
         </Box>
 
         <GlassCard elevation={0}>
@@ -146,17 +136,48 @@ export default function LoginPage() {
                   border: "1px solid rgba(220,60,60,0.18)",
                   color: "rgba(255,150,150,0.9)",
                   fontSize: 13,
-                  "& .MuiAlert-icon": {
-                    color: "rgba(255,110,110,0.7)",
-                    fontSize: 18,
-                  },
+                  "& .MuiAlert-icon": { color: "rgba(255,110,110,0.7)", fontSize: 18 },
                 }}
               >
                 {error}
               </Alert>
             )}
 
-            <Box component="form" onSubmit={handleLogin} sx={{ display: "grid", gap: 1.8 }}>
+            {success && (
+              <Alert
+                severity="success"
+                sx={{
+                  mb: 2.5,
+                  borderRadius: "10px",
+                  py: 0.5,
+                  backgroundColor: "rgba(50,200,120,0.10)",
+                  border: "1px solid rgba(50,200,120,0.18)",
+                  color: "rgba(180,255,220,0.9)",
+                  fontSize: 13,
+                  "& .MuiAlert-icon": { color: "rgba(120,255,180,0.7)", fontSize: 18 },
+                }}
+              >
+                {success}
+              </Alert>
+            )}
+
+            <Box component="form" onSubmit={handleSignUp} sx={{ display: "grid", gap: 1.8 }}>
+              <TextField
+                label="Nome"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                autoComplete="name"
+                fullWidth
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <PersonRoundedIcon />
+                    </InputAdornment>
+                  ),
+                }}
+                sx={inputSx}
+              />
+
               <TextField
                 label="Email"
                 value={email}
@@ -179,7 +200,7 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 type={showPass ? "text" : "password"}
-                autoComplete="current-password"
+                autoComplete="new-password"
                 fullWidth
                 InputProps={{
                   startAdornment: (
@@ -193,10 +214,7 @@ export default function LoginPage() {
                         onClick={() => setShowPass((v) => !v)}
                         edge="end"
                         size="small"
-                        sx={{
-                          color: "rgba(255,255,255,0.22)",
-                          "&:hover": { color: "rgba(255,255,255,0.5)" },
-                        }}
+                        sx={{ color: "rgba(255,255,255,0.22)", "&:hover": { color: "rgba(255,255,255,0.5)" } }}
                       >
                         {showPass ? (
                           <VisibilityOffRoundedIcon sx={{ fontSize: 18 }} />
@@ -222,17 +240,14 @@ export default function LoginPage() {
                   borderRadius: "10px",
                   textTransform: "none",
                   fontSize: 14.5,
-                  letterSpacing: 0.2,
                   background: "linear-gradient(135deg, #7B54FF 0%, #5B8FFF 100%)",
                   boxShadow: "0 6px 24px rgba(100, 70, 230, 0.35)",
                   transition: "all 0.2s ease",
                   "&:hover": {
-                    background:
-                      "linear-gradient(135deg, #8B64FF 0%, #6B9FFF 100%)",
+                    background: "linear-gradient(135deg, #8B64FF 0%, #6B9FFF 100%)",
                     boxShadow: "0 10px 32px rgba(100, 70, 230, 0.5)",
                     transform: "translateY(-1px)",
                   },
-                  "&:active": { transform: "translateY(0)" },
                   "&.Mui-disabled": {
                     background: "rgba(255,255,255,0.06)",
                     color: "rgba(255,255,255,0.2)",
@@ -242,39 +257,26 @@ export default function LoginPage() {
                 {loading ? (
                   <CircularProgress size={16} sx={{ color: "rgba(255,255,255,0.6)" }} />
                 ) : (
-                  "Entrar"
+                  "Cadastrar"
                 )}
+              </Button>
+
+              <Button
+                type="button"
+                variant="text"
+                onClick={() => navigate(ROUTES.login)}
+                sx={{
+                  textTransform: "none",
+                  fontWeight: 700,
+                  opacity: 0.85,
+                }}
+              >
+                Voltar
               </Button>
             </Box>
           </CardContent>
         </GlassCard>
-
-        <Box sx={{ mt: 3, textAlign: "center" }}>
-          <Typography component="span" sx={{ fontSize: 13, color: "rgba(255,255,255,0.3)" }}>
-            Não tem conta?{" "}
-          </Typography>
-          <Typography
-            component="span"
-            onClick={() => navigate(ROUTES.signup)}
-            sx={{
-              fontSize: 13,
-              fontWeight: 700,
-              color: "rgba(160,130,255,0.75)",
-              cursor: "pointer",
-              transition: "color 0.15s",
-              "&:hover": { color: "rgba(180,155,255,1)" },
-            }}
-          >
-            Cadastre-se
-          </Typography>
-        </Box>
-
-        {apiBase && (
-          <Typography sx={{ mt: 3, textAlign: "center", opacity: 0.25, fontSize: 11, wordBreak: "break-word" }}>
-            {apiBase}
-          </Typography>
-        )}
       </Container>
-    </LoginWrapper>
+    </SignUpWrapper>
   );
 }
