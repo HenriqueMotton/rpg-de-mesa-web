@@ -53,7 +53,7 @@ export default function LoginPage() {
     try {
       const data = await login({ email, password });
       setAuthToken(data.access_token);
-      navigate(ROUTES.mesa);
+      navigate(ROUTES.personagens);
     } catch (err: any) {
       setError(
         err?.response?.data?.message ||

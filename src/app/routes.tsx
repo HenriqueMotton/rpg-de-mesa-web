@@ -2,22 +2,16 @@ import type { RouteObject } from "react-router-dom";
 import { Navigate } from "react-router-dom";
 import AppShell from "../layouts/AppShell";
 
-// import MesaPage from "../pages/MesaPage";
-// import PersonagensPage from "../pages/PersonagensPage";
-// import RolagensPage from "../pages/RolagensPage";
-// import NotasPage from "../pages/NotasPage";
-// import ConfigPage from "../pages/ConfigPage";
-// import NotFoundPage from "../pages/NotFoundPage";
 import LoginPage from "../pages/login/LoginPage";
 import NotFoundPage from "../pages/NotFoundPage";
 import SignUpPage from "../pages/signUp/SignUpPage";
 
 import { getToken } from "../shared/auth/token";
+import PersonagensPage from "../pages/personagens/PersonagensPage";
 
 export const ROUTES = {
   login: "/login",
   signup: "/signup",
-  mesa: "/mesa",
   personagens: "/personagens",
   rolagens: "/rolagens",
   notas: "/notas",
@@ -42,8 +36,8 @@ export const routes: RouteObject[] = [
       </RequireAuth>
     ),
     children: [
-      { index: true, element: <Navigate to={ROUTES.mesa} replace /> },
-      // { path: ROUTES.mesa.slice(1), element: <MesaPage /> },
+      { index: true, element: <Navigate to={ROUTES.personagens} replace /> },
+      { path: ROUTES.personagens.slice(1), element: <PersonagensPage /> },
       // { path: ROUTES.personagens.slice(1), element: <PersonagensPage /> },
       // { path: ROUTES.rolagens.slice(1), element: <RolagensPage /> },
       // { path: ROUTES.notas.slice(1), element: <NotasPage /> },

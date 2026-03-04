@@ -1,79 +1,254 @@
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import { ROUTES } from "../app/routes";
-
 import {
   AppBar,
   Box,
-  Container,
-  Paper,
   Toolbar,
   Typography,
+  IconButton,
   BottomNavigation,
   BottomNavigationAction,
+  Paper,
 } from "@mui/material";
 
-import GroupsIcon from "@mui/icons-material/Groups";
-import CasinoIcon from "@mui/icons-material/Casino";
-import BookIcon from "@mui/icons-material/Book";
-import SettingsIcon from "@mui/icons-material/Settings";
-import HomeIcon from "@mui/icons-material/Home";
+import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
+import GroupRoundedIcon from "@mui/icons-material/GroupRounded";
+import CasinoRoundedIcon from "@mui/icons-material/CasinoRounded";
+import NoteAltRoundedIcon from "@mui/icons-material/NoteAltRounded";
+import SettingsRoundedIcon from "@mui/icons-material/SettingsRounded";
 
-function routeToTab(pathname: string) {
-  if (pathname.startsWith(ROUTES.personagens)) return 1;
-  if (pathname.startsWith(ROUTES.rolagens)) return 2;
-  if (pathname.startsWith(ROUTES.notas)) return 3;
-  if (pathname.startsWith(ROUTES.config)) return 4;
-  return 0; // mesa
-}
+import { ROUTES } from "../app/routes";
+import { useAuthStore } from "../modules/auth/auth.store";
 
-function tabToRoute(tab: number) {
-  switch (tab) {
-    case 1:
-      return ROUTES.personagens;
-    case 2:
-      return ROUTES.rolagens;
-    case 3:
-      return ROUTES.notas;
-    case 4:
-      return ROUTES.config;
-    default:
-      return ROUTES.mesa;
-  }
-}
+const HEADER_H = 58;
+const NAV_H = 62;
 
 export default function AppShell() {
-  const navigate = useNavigate();
+  const NAV_ITEMS = [
+    { label: "Personagens", value: ROUTES.personagens,  icon: <GroupRoundedIcon /> },
+    { label: "Rolagens",    value: ROUTES.rolagens,     icon: <CasinoRoundedIcon /> },
+    { label: "Notas",       value: ROUTES.notas,        icon: <NoteAltRoundedIcon /> },
+    { label: "Config",      value: ROUTES.config,       icon: <SettingsRoundedIcon /> },
+  ];
   const location = useLocation();
-  const tab = routeToTab(location.pathname);
+  const navigate  = useNavigate();
+  const logout    = useAuthStore((s) => s.logout);
+
+  const path = location.pathname;
+
+  const navValue = (() => {
+    for (const item of NAV_ITEMS) {
+      if (path.startsWith(item.value)) return item.value;
+    }
+    return ROUTES.personagens;
+  })();
 
   return (
-    <Box sx={{ minHeight: "100vh", pb: 8 }}>
-      <AppBar position="sticky" elevation={0}>
-        <Toolbar>
-          <Typography variant="h6" sx={{ fontWeight: 800 }}>
-            RPG de Mesa
-          </Typography>
+    <Box sx={{ minHeight: "100vh", bgcolor: "#07090F" }}>
+
+      {/* ── Header ── */}
+      <AppBar
+        position="fixed"
+        elevation={0}
+        sx={{
+          height: HEADER_H,
+          justifyContent: "center",
+          bgcolor: "rgba(7, 9, 15, 0.8)",
+          backdropFilter: "blur(20px)",
+          borderBottom: "1px solid rgba(255,255,255,0.055)",
+          // Linha roxa sutil na base do header
+          "&::after": {
+            content: '""',
+            position: "absolute",
+            bottom: 0,
+            left: "50%",
+            transform: "translateX(-50%)",
+            width: "40%",
+            height: "1px",
+            background:
+              "linear-gradient(90deg, transparent, rgba(120,85,255,0.55), transparent)",
+          },
+        }}
+      >
+        <Toolbar sx={{ minHeight: HEADER_H, px: 2, gap: 1.5 }}>
+          {/* Logo mark */}
+          <Box
+            sx={{
+              width: 32,
+              height: 32,
+              borderRadius: "9px",
+              display: "grid",
+              placeItems: "center",
+              flexShrink: 0,
+              background:
+                "linear-gradient(135deg, #7B54FF 0%, #5B8FFF 100%)",
+              boxShadow: "0 4px 16px rgba(100,70,230,0.4)",
+            }}
+          >
+            <CasinoRoundedIcon sx={{ fontSize: 16, color: "#fff" }} />
+          </Box>
+
+          {/* Title */}
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography
+              sx={{
+                fontWeight: 800,
+                fontSize: 15,
+                letterSpacing: -0.4,
+                color: "rgba(255,255,255,0.93)",
+                lineHeight: 1,
+              }}
+              noWrap
+            >
+              RPG de Mesa
+            </Typography>
+            <Typography
+              sx={{
+                fontSize: 11,
+                letterSpacing: 0.2,
+                color: "rgba(255,255,255,0.32)",
+                mt: 0.35,
+                lineHeight: 1,
+              }}
+              noWrap
+            >
+              Local • sua rede
+            </Typography>
+          </Box>
+
+          {/* Logout */}
+          <IconButton
+            onClick={() => { logout(); navigate(ROUTES.login); }}
+            size="small"
+            sx={{
+              width: 34,
+              height: 34,
+              color: "rgba(255,255,255,0.4)",
+              border: "1px solid rgba(255,255,255,0.07)",
+              borderRadius: "9px",
+              bgcolor: "rgba(255,255,255,0.03)",
+              transition: "all 0.18s",
+              "&:hover": {
+                color: "rgba(255,100,100,0.8)",
+                bgcolor: "rgba(255,60,60,0.08)",
+                borderColor: "rgba(255,60,60,0.18)",
+              },
+            }}
+          >
+            <LogoutRoundedIcon sx={{ fontSize: 16 }} />
+          </IconButton>
         </Toolbar>
       </AppBar>
 
-      <Container maxWidth="sm">
+      {/* ── Content ── */}
+      <Box sx={{ pt: `${HEADER_H}px`, pb: `${NAV_H + 8}px` }}>
         <Outlet />
-      </Container>
+      </Box>
 
+      {/* ── Bottom Nav ── */}
       <Paper
-        elevation={8}
-        sx={{ position: "fixed", left: 0, right: 0, bottom: 0, borderTopLeftRadius: 24, borderTopRightRadius: 24 }}
+        elevation={0}
+        sx={{
+          position: "fixed",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          pb: "env(safe-area-inset-bottom)",
+          bgcolor: "rgba(7, 9, 15, 0.82)",
+          backdropFilter: "blur(20px)",
+          borderTop: "1px solid rgba(255,255,255,0.055)",
+          // Mesma linha decorativa no topo do nav
+          "&::before": {
+            content: '""',
+            position: "absolute",
+            top: 0,
+            left: "50%",
+            transform: "translateX(-50%)",
+            width: "40%",
+            height: "1px",
+            background:
+              "linear-gradient(90deg, transparent, rgba(120,85,255,0.45), transparent)",
+          },
+        }}
       >
         <BottomNavigation
-          value={tab}
-          onChange={(_, v) => navigate(tabToRoute(v))}
           showLabels
+          value={navValue}
+          onChange={(_, v) => navigate(v)}
+          sx={{
+            height: NAV_H,
+            bgcolor: "transparent",
+
+            // Item padrão
+            "& .MuiBottomNavigationAction-root": {
+              minWidth: 0,
+              px: 0.5,
+              gap: 0.4,
+              color: "rgba(255,255,255,0.28)",
+              transition: "color 0.18s",
+              "& .MuiBottomNavigationAction-label": {
+                fontSize: "10.5px",
+                fontWeight: 600,
+                letterSpacing: 0.1,
+                opacity: 1,
+              },
+            },
+
+            // Item ativo
+            "& .MuiBottomNavigationAction-root.Mui-selected": {
+              color: "rgba(255,255,255,0.92)",
+              "& svg": {
+                filter: "drop-shadow(0 0 6px rgba(130,100,255,0.7))",
+              },
+              "& .MuiBottomNavigationAction-label": {
+                fontWeight: 700,
+              },
+            },
+          }}
         >
-          <BottomNavigationAction label="Mesa" icon={<HomeIcon />} />
-          <BottomNavigationAction label="Personagens" icon={<GroupsIcon />} />
-          <BottomNavigationAction label="Rolagens" icon={<CasinoIcon />} />
-          <BottomNavigationAction label="Notas" icon={<BookIcon />} />
-          <BottomNavigationAction label="Config" icon={<SettingsIcon />} />
+          {NAV_ITEMS.map((item) => {
+            const active = navValue === item.value;
+            return (
+              <BottomNavigationAction
+                key={item.value}
+                label={item.label}
+                value={item.value}
+                icon={
+                  <Box
+                    sx={{
+                      position: "relative",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      width: 36,
+                      height: 28,
+                      borderRadius: "8px",
+                      transition: "background 0.18s",
+                      bgcolor: active
+                        ? "rgba(120,85,255,0.15)"
+                        : "transparent",
+                      // Pill indicator
+                      "&::before": active
+                        ? {
+                            content: '""',
+                            position: "absolute",
+                            top: -1,
+                            left: "50%",
+                            transform: "translateX(-50%)",
+                            width: 20,
+                            height: 2,
+                            borderRadius: "0 0 4px 4px",
+                            background:
+                              "linear-gradient(90deg, #7B54FF, #5B8FFF)",
+                          }
+                        : {},
+                    }}
+                  >
+                    {item.icon}
+                  </Box>
+                }
+              />
+            );
+          })}
         </BottomNavigation>
       </Paper>
     </Box>

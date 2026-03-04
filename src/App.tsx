@@ -72,7 +72,6 @@ export default function App() {
           sx={{ position: "fixed", left: 0, right: 0, bottom: 0, borderTopLeftRadius: 24, borderTopRightRadius: 24 }}
         >
           <BottomNavigation value={tab} onChange={(_, v) => setTab(v)} showLabels>
-            <BottomNavigationAction label="Mesa" icon={<GroupsIcon />} />
             <BottomNavigationAction label="Personagens" icon={<GroupsIcon />} />
             <BottomNavigationAction label="Rolagens" icon={<CasinoIcon />} />
             <BottomNavigationAction label="Notas" icon={<BookIcon />} />

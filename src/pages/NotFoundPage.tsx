@@ -9,7 +9,7 @@ export default function NotFoundPage() {
       <Typography variant="h5" sx={{ fontWeight: 800, mb: 1 }}>
         Página não encontrada
       </Typography>
-      <Button variant="contained" onClick={() => navigate(ROUTES.mesa)}>
+      <Button variant="contained" onClick={() => navigate(ROUTES.personagens)}>
         Voltar pra Mesa
       </Button>
     </Box>
