@@ -9,6 +9,7 @@ import SignUpPage from "../pages/signUp/SignUpPage";
 import { getToken } from "../shared/auth/token";
 import PersonagensPage from "../pages/personagens/PersonagensPage";
 import CreateCharacterPage from "../pages/personagens/CreateCharacterPage";
+import ViewCharacterPage from "../pages/personagens/ViewCharacterPage";
 
 export const ROUTES = {
   login: "/login",
@@ -16,6 +17,7 @@ export const ROUTES = {
 
   personagens: "/personagens",
   personagemNovo: "/personagens/novo",
+  personagem: "/personagens/:id",
 
   rolagens: "/rolagens",
   notas: "/notas",
@@ -47,8 +49,7 @@ export const routes: RouteObject[] = [
         children: [
           { index: true, element: <PersonagensPage /> },          
           { path: "novo", element: <CreateCharacterPage /> },    
-          // futuro:
-          // { path: ":id", element: <CharacterPage /> },          // "/personagens/123"
+          { path: ":id", element: <ViewCharacterPage /> },
         ],
       },
       
