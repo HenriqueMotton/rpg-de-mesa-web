@@ -16,6 +16,28 @@ export type Character = CharacterListItem & {
   [key: string]: any;
 };
 
+export type Skill = {
+  id: number;
+  name: string;
+  attribute?: string | null;
+  description?: string | null;
+};
+
+export type CreateCharacterPayload = {
+  name: string;
+  attributes: {
+    forca: number;
+    destreza: number;
+    constituicao: number;
+    inteligencia: number;
+    sabedoria: number;
+    carisma: number;
+  };
+  selectedSkills: number[];
+  money: number;
+  health: number;
+};
+
 export async function listCharacters() {
   const { data } = await http.get<CharacterListItem[]>("/characters");
   return data;
@@ -51,4 +73,14 @@ export async function saveCharacter(character: any) {
     attributes: { ...(character.idAttribute ?? character.attributes) },
   };
   await http.put(`/characters/${character.id}`, payload);
+}
+
+export async function createCharacter(payload: CreateCharacterPayload) {
+  const { data } = await http.post("/characters", payload);
+  return data;
+}
+
+export async function listSkills() {
+  const { data } = await http.get<Skill[]>("/skills");
+  return data;
 }

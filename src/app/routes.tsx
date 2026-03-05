@@ -8,11 +8,15 @@ import SignUpPage from "../pages/signUp/SignUpPage";
 
 import { getToken } from "../shared/auth/token";
 import PersonagensPage from "../pages/personagens/PersonagensPage";
+import CreateCharacterPage from "../pages/personagens/CreateCharacterPage";
 
 export const ROUTES = {
   login: "/login",
   signup: "/signup",
+
   personagens: "/personagens",
+  personagemNovo: "/personagens/novo",
+
   rolagens: "/rolagens",
   notas: "/notas",
   config: "/config",
@@ -37,7 +41,17 @@ export const routes: RouteObject[] = [
     ),
     children: [
       { index: true, element: <Navigate to={ROUTES.personagens} replace /> },
-      { path: ROUTES.personagens.slice(1), element: <PersonagensPage /> },
+
+      {
+        path: ROUTES.personagens.slice(1), 
+        children: [
+          { index: true, element: <PersonagensPage /> },          
+          { path: "novo", element: <CreateCharacterPage /> },    
+          // futuro:
+          // { path: ":id", element: <CharacterPage /> },          // "/personagens/123"
+        ],
+      },
+      
       // { path: ROUTES.personagens.slice(1), element: <PersonagensPage /> },
       // { path: ROUTES.rolagens.slice(1), element: <RolagensPage /> },
       // { path: ROUTES.notas.slice(1), element: <NotasPage /> },

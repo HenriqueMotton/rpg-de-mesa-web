@@ -31,6 +31,7 @@ import {
 } from "../../modules/characters/characters.api";
 import { useCharactersStore } from "../../modules/characters/characters.store";
 import { Page, Glow, Glass } from "./Personagens.styles";
+import { ROUTES } from "../../app/routes";
 
 export default function PersonagensPage() {
   const navigate        = useNavigate();
@@ -124,7 +125,7 @@ export default function PersonagensPage() {
 
             <Button
               variant="contained"
-              onClick={() => navigate("/personagens/novo")}
+              onClick={() => navigate(ROUTES.personagemNovo)}
               startIcon={<AddRoundedIcon sx={{ fontSize: "17px !important" }} />}
               sx={{
                 height: 34, borderRadius: "9px", textTransform: "none",
