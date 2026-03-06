@@ -20,7 +20,9 @@ import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import RemoveRoundedIcon from "@mui/icons-material/RemoveRounded";
 import SaveRoundedIcon from "@mui/icons-material/SaveRounded";
 import UndoRoundedIcon from "@mui/icons-material/UndoRounded";
+import StarRoundedIcon from "@mui/icons-material/StarRounded";
 
+import confetti from "canvas-confetti";
 import { useNavigate, useParams } from "react-router-dom";
 import { ROUTES } from "../../app/routes";
 import {
@@ -40,6 +42,8 @@ import {
   saveCharacter,
   type Character,
 } from "../../modules/characters/characters.api";
+import { getInventory } from "../../modules/inventory/inventory.api";
+import { useCharactersStore } from "../../modules/characters/characters.store";
 
 
 type AttrKey = "forca" | "destreza" | "constituicao" | "inteligencia" | "sabedoria" | "carisma";
@@ -69,6 +73,49 @@ const ATTR_COLOR: Record<AttrKey, { accent: string; glow: string; bg: string; bo
 };
 
 type HpAction = "damage" | "heal" | "increaseMaxHealth";
+
+const RACE_ICON: Record<string, string> = {
+  "Anão": "⛏️", "Elfo": "🌿", "Meio-Elfo": "🌟", "Humano": "🏛️",
+  "Draconato": "🐉", "Gnomo": "⚙️", "Meio-Orc": "💪", "Hobbit": "🌻",
+};
+
+const XP_THRESHOLDS = [0, 300, 900, 1800, 3800, 7500, 14000, 23000, 34000, 48000, 64000, 83000, 100000, 120000, 140000, 165000, 195000, 225000, 265000, 305000];
+
+function getLevelFromXp(xp: number): number {
+  let level = 1;
+  for (let i = 1; i < XP_THRESHOLDS.length; i++) {
+    if (xp >= XP_THRESHOLDS[i]) level = i + 1;
+    else break;
+  }
+  return Math.min(level, 20);
+}
+
+function fireLevelUpConfetti() {
+  const colors = ["#f0c020", "#7B54FF", "#5B8FFF", "#ff6b9d", "#ffffff", "#4ecdc4"];
+  const base = { spread: 70, ticks: 120, gravity: 0.9, colors };
+
+  // left burst
+  confetti({ ...base, particleCount: 70, angle: 60, origin: { x: 0, y: 0.65 } });
+  // right burst
+  confetti({ ...base, particleCount: 70, angle: 120, origin: { x: 1, y: 0.65 } });
+  // center shower after short delay
+  setTimeout(() => {
+    confetti({ ...base, particleCount: 100, angle: 90, spread: 100, origin: { x: 0.5, y: 0.4 } });
+  }, 180);
+  // final small burst
+  setTimeout(() => {
+    confetti({ ...base, particleCount: 50, angle: 90, spread: 60, origin: { x: 0.5, y: 0.3 } });
+  }, 420);
+}
+
+function getXpProgress(xp: number) {
+  const level   = getLevelFromXp(xp);
+  if (level >= 20) return { level, current: xp, floor: XP_THRESHOLDS[19], ceiling: XP_THRESHOLDS[19], pct: 1, isMax: true };
+  const floor   = XP_THRESHOLDS[level - 1];
+  const ceiling = XP_THRESHOLDS[level];
+  const pct     = (xp - floor) / (ceiling - floor);
+  return { level, current: xp, floor, ceiling, pct, isMax: false };
+}
 
 
 function getModifier(v: number) { return Math.floor((v - 10) / 2); }
@@ -111,6 +158,7 @@ function makeComparableState(c: any) {
   return {
     id: c.id, name: c.name,
     money: Number(c.money ?? 0), health: Number(c.health ?? 0), maxHealth: Number(c.maxHealth ?? 0),
+    xp: Number(c.xp ?? 0),
     attrs: getAttrsFrom(c),
   };
 }
@@ -218,6 +266,7 @@ function LongPressButton({ onAction, disabled, children, sx }: LongPressButtonPr
 export default function ViewCharacterPage() {
   const navigate = useNavigate();
   const { id } = useParams();
+  const setSelected = useCharactersStore((s) => s.setSelected);
 
   const [loading, setLoading] = useState(true);
   const [saving,  setSaving]  = useState(false);
@@ -226,6 +275,8 @@ export default function ViewCharacterPage() {
   const [original, setOriginal] = useState<Character | null>(null);
   const [draft,    setDraft]    = useState<Character | null>(null);
 
+  const [invWeight,  setInvWeight]  = useState<{ total: number; capacity: number } | null>(null);
+
   const [hpOpen,     setHpOpen]     = useState(false);
   const [hpAction,   setHpAction]   = useState<HpAction>("damage");
   const [hpAmount,   setHpAmount]   = useState("");
@@ -233,6 +284,9 @@ export default function ViewCharacterPage() {
   const [goldOpen,   setGoldOpen]   = useState(false);
   const [goldAction, setGoldAction] = useState<"add" | "remove">("add");
   const [goldAmount, setGoldAmount] = useState("");
+
+  const [xpOpen,   setXpOpen]   = useState(false);
+  const [xpAmount, setXpAmount] = useState("");
 
   const [fabVisible, setFabVisible] = useState(false);
 
@@ -245,6 +299,11 @@ export default function ViewCharacterPage() {
         const data = await getCharacter(id);
         if (!alive) return;
         setOriginal(data); setDraft(data);
+        setSelected(data);
+        getInventory(id).then((inv) => {
+          if (!alive) return;
+          setInvWeight({ total: inv.totalWeight, capacity: inv.carryingCapacity });
+        }).catch(() => {});
       } catch (e: any) {
         if (!alive) return;
         setError(e?.response?.data?.message || e?.message || "Não foi possível carregar o personagem.");
@@ -308,10 +367,23 @@ export default function ViewCharacterPage() {
 
   function changeAttribute(k: AttrKey, delta: 1 | -1) {
     if (!draft) return;
-    const cur = getAttrsFrom(draft);
+    const cur  = getAttrsFrom(draft);
     const next = clamp(cur[k] + delta, ATTR_MIN, ATTR_MAX);
     if (next === cur[k]) return;
-    setDraft(withAttrs(draft, { ...cur, [k]: next }));
+
+    let updated = withAttrs(draft, { ...cur, [k]: next });
+
+    if (k === "constituicao") {
+      const modDiff = getModifier(next) - getModifier(cur.constituicao);
+      if (modDiff !== 0) {
+        const nivel       = Number((draft as any).nivel ?? 1);
+        const newMaxHp    = Math.max(1, (draft.maxHealth ?? 1) + modDiff * nivel);
+        const newHp       = Math.min(draft.health ?? 0, newMaxHp);
+        updated = { ...updated, health: newHp, maxHealth: newMaxHp };
+      }
+    }
+
+    setDraft(updated);
   }
 
   async function handleSave() {
@@ -347,6 +419,22 @@ export default function ViewCharacterPage() {
     setGoldOpen(false); setGoldAmount("");
   }
 
+  function applyXpToDraft() {
+    if (!draft) return;
+    setError(null);
+    const v = parseInt(xpAmount, 10);
+    if (!Number.isFinite(v) || v <= 0) { setError("Informe um número válido maior que 0."); return; }
+    const oldNivel = getLevelFromXp(Number((draft as any).xp ?? 0));
+    const newXp    = Math.max(0, Number((draft as any).xp ?? 0) + v);
+    const newNivel = getLevelFromXp(newXp);
+    setDraft({ ...draft, xp: newXp, nivel: newNivel } as any);
+    setXpOpen(false); setXpAmount("");
+    if (newNivel > oldNivel) {
+      // pequeno delay para o dialog fechar antes de soltar os confetes
+      setTimeout(fireLevelUpConfetti, 120);
+    }
+  }
+
   return (
     <Page>
       <OrbTop />
@@ -360,6 +448,12 @@ export default function ViewCharacterPage() {
           <Box>
             <PageLabel>{loading ? " " : "Ficha do Personagem"}</PageLabel>
             <PageTitle>{loading ? "Carregando…" : (draft?.name ?? "Personagem")}</PageTitle>
+            {!loading && (draft as any)?.race && (
+              <Typography sx={{ fontSize: 12.5, color: "rgba(255,255,255,0.28)", mt: 0.25, letterSpacing: "0.01em" }}>
+                {RACE_ICON[(draft as any).race.name] ?? "🎲"} {(draft as any).race.name}
+                {(draft as any).subRace ? ` · ${(draft as any).subRace.name}` : ""}
+              </Typography>
+            )}
             {(loading || saving) && <LoadingBar />}
           </Box>
           <BackButton
@@ -375,6 +469,70 @@ export default function ViewCharacterPage() {
             {error}
           </Alert>
         )}
+
+        {/* ── XP CARD ──────────────────────────────────────────────────────── */}
+        {!loading && draft && (() => {
+          const xpData = getXpProgress(Number((draft as any).xp ?? 0));
+          const nivel  = (draft as any).nivel ?? xpData.level;
+          return (
+            <Box
+              onClick={() => { setXpAmount(""); setXpOpen(true); }}
+              sx={{
+                mb: 1.5, px: 2, pt: 1.75, pb: 1.5, borderRadius: "20px",
+                bgcolor: "rgba(255,195,60,0.06)",
+                border: "1px solid rgba(255,195,60,0.15)",
+                cursor: "pointer", transition: "all .15s",
+                "&:hover": { bgcolor: "rgba(255,195,60,0.1)", borderColor: "rgba(255,195,60,0.28)" },
+              }}
+            >
+              {/* Row 1: badge + info + icon */}
+              <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 1.25 }}>
+
+                {/* Level circle */}
+                <Box sx={{
+                  flexShrink: 0, width: 46, height: 46, borderRadius: "50%",
+                  background: "linear-gradient(135deg, #b87000 0%, #f0c020 100%)",
+                  boxShadow: "0 4px 14px rgba(200,160,0,0.35)",
+                  display: "grid", placeItems: "center",
+                }}>
+                  <Typography sx={{ fontSize: 20, fontWeight: 900, color: "#1c1100", lineHeight: 1 }}>
+                    {nivel}
+                  </Typography>
+                </Box>
+
+                {/* Labels */}
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography sx={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,210,80,0.5)", lineHeight: 1, mb: 0.4 }}>
+                    Experiência
+                  </Typography>
+                  <Typography sx={{ fontSize: 15, fontWeight: 900, color: "rgba(255,215,100,0.93)", lineHeight: 1 }}>
+                    {xpData.current.toLocaleString("pt-BR")}
+                    <Typography component="span" sx={{ fontSize: 12, fontWeight: 600, ml: 0.5, opacity: 0.6 }}>XP</Typography>
+                  </Typography>
+                </Box>
+
+                <AddRoundedIcon sx={{ fontSize: 18, color: "rgba(255,195,60,0.38)", flexShrink: 0 }} />
+              </Stack>
+
+              {/* Row 2: progress bar */}
+              <Box sx={{ borderRadius: 99, height: 7, bgcolor: "rgba(0,0,0,0.22)", overflow: "hidden", mb: 0.65 }}>
+                <Box sx={{
+                  height: "100%", width: `${Math.round(xpData.pct * 100)}%`,
+                  background: "linear-gradient(90deg, #b87000, #f0c020)",
+                  borderRadius: 99, boxShadow: "0 0 10px rgba(240,192,32,0.45)",
+                  transition: "width .5s cubic-bezier(.4,0,.2,1)",
+                }} />
+              </Box>
+
+              {/* Row 3: hint */}
+              <Typography sx={{ fontSize: 11, color: "rgba(255,255,255,0.28)", pl: 0.25 }}>
+                {xpData.isMax
+                  ? "Nível máximo atingido"
+                  : `faltam ${(xpData.ceiling - xpData.current).toLocaleString("pt-BR")} XP para o nível ${xpData.level + 1}`}
+              </Typography>
+            </Box>
+          );
+        })()}
 
         <Glass elevation={0}>
           <Box sx={{ p: { xs: 2, sm: 2.25 } }}>
@@ -444,10 +602,42 @@ export default function ViewCharacterPage() {
                   </Box>
                 </GoldPill>
 
+                {/* ── CARGA ──────────────────────────────────────── */}
+                {invWeight && (() => {
+                  const pct = invWeight.capacity > 0 ? invWeight.total / invWeight.capacity : 0;
+                  const clr = pct > 1
+                    ? { fill: "linear-gradient(90deg,#aa2020,#e03535)", glow: "rgba(220,50,50,0.35)", border: "rgba(220,50,50,0.22)", track: "rgba(220,50,50,0.07)", label: "Sobrecarregado", text: "rgba(255,130,130,0.9)" }
+                    : pct > 0.75
+                    ? { fill: "linear-gradient(90deg,#c05800,#e87820)", glow: "rgba(230,120,30,0.35)", border: "rgba(230,120,30,0.22)", track: "rgba(230,120,30,0.07)", label: "Pesado",          text: "rgba(255,185,110,0.9)" }
+                    : pct > 0.5
+                    ? { fill: "linear-gradient(90deg,#c88000,#f0aa20)", glow: "rgba(240,170,30,0.35)", border: "rgba(240,170,30,0.2)",  track: "rgba(240,170,30,0.07)", label: "Moderado",        text: "rgba(255,215,100,0.95)" }
+                    : { fill: "linear-gradient(90deg,#1fa863,#2ecc8a)", glow: "rgba(46,204,130,0.35)", border: "rgba(46,204,130,0.2)",  track: "rgba(46,204,130,0.07)", label: "Tranquilo",       text: "rgba(100,240,170,0.95)" };
+                  return (
+                    <Box>
+                      <SectionLabel icon="🎒" label="Carga" />
+                      <Box sx={{ position: "relative", borderRadius: "14px", overflow: "hidden", border: `1px solid ${clr.border}`, bgcolor: clr.track }}>
+                        <Box sx={{ height: 40, width: `${Math.min(pct, 1) * 100}%`, background: clr.fill, transition: "width .5s cubic-bezier(.4,0,.2,1)", boxShadow: `4px 0 16px ${clr.glow}` }} />
+                        <Box sx={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "space-between", px: 1.75, pointerEvents: "none" }}>
+                          <Typography sx={{ fontSize: 13, fontWeight: 900, color: "rgba(255,255,255,0.9)" }}>
+                            {invWeight.total} kg
+                            <Typography component="span" sx={{ fontSize: 11.5, fontWeight: 600, opacity: 0.5, ml: 0.5 }}>
+                              / {invWeight.capacity} kg
+                            </Typography>
+                          </Typography>
+                          <Box sx={{ px: 1.1, py: 0.3, borderRadius: "8px", bgcolor: "rgba(0,0,0,0.28)", border: `1px solid ${clr.border}` }}>
+                            <Typography sx={{ fontSize: 10.5, fontWeight: 800, color: clr.text, letterSpacing: "0.04em" }}>
+                              {clr.label} · {Math.min(Math.round(pct * 100), 999)}%
+                            </Typography>
+                          </Box>
+                        </Box>
+                      </Box>
+                    </Box>
+                  );
+                })()}
+
                 {/* ── ATTRIBUTES ─────────────────────────────────── */}
                 <Box>
                   <SectionLabel icon="⚡" label="Atributos" />
-                  <AttrHint>Toque para +1 · Segure para incrementar rapidamente</AttrHint>
 
                   <AttrGrid>
                     {(Object.keys(attrs) as AttrKey[]).map((k) => {
@@ -538,7 +728,6 @@ export default function ViewCharacterPage() {
                     </Stack>
                   )}
                 </Box>
-
               </Stack>
             )}
           </Box>
@@ -709,6 +898,82 @@ export default function ViewCharacterPage() {
               </Typography>
             </Box>
           )}
+        </Stack>
+      </AppDialog>
+
+      {/* ── XP DIALOG ────────────────────────────────────────────────────── */}
+      <AppDialog
+        open={xpOpen}
+        onClose={() => setXpOpen(false)}
+        title="Adicionar Experiência"
+        dividers
+        actions={
+          <Stack direction="row" spacing={1} sx={{ width: "100%" }}>
+            <Button onClick={() => setXpOpen(false)} variant="text" startIcon={<CloseRoundedIcon />}
+              sx={{ textTransform: "none", fontWeight: 800, borderRadius: "12px", color: "rgba(255,255,255,0.3)", "&:hover": { bgcolor: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.6)" } }}
+            >
+              Cancelar
+            </Button>
+            <Box sx={{ flex: 1 }} />
+            <AppDialogConfirmButton onClick={applyXpToDraft} sx={{ px: 4, py: 1.2, borderRadius: "12px" }}>
+              Aplicar
+            </AppDialogConfirmButton>
+          </Stack>
+        }
+      >
+        <Stack spacing={1.5}>
+          <Typography sx={{ fontSize: 13, color: "rgba(255,255,255,0.5)" }}>
+            Informe o XP ganho na sessão. O nível sobe automaticamente.
+          </Typography>
+          <Box sx={{ px: 1.5, py: 1.2, borderRadius: "12px", bgcolor: "rgba(255,195,60,0.07)", border: "1px solid rgba(255,195,60,0.16)", display: "flex", alignItems: "center", gap: 1.2 }}>
+            <StarRoundedIcon sx={{ fontSize: 16, color: "rgba(255,215,100,0.7)" }} />
+            <Typography sx={{ fontSize: 13, color: "rgba(255,215,100,0.85)", fontWeight: 700 }}>
+              XP atual:{" "}
+              <Typography component="span" sx={{ fontWeight: 900, fontSize: 14 }}>
+                {Number((draft as any)?.xp ?? 0).toLocaleString("pt-BR")}
+              </Typography>
+              {"  ·  "}Nível{" "}
+              <Typography component="span" sx={{ fontWeight: 900, fontSize: 14 }}>
+                {(draft as any)?.nivel ?? 1}
+              </Typography>
+            </Typography>
+          </Box>
+          <TextField
+            label="XP ganho"
+            value={xpAmount}
+            onChange={(e) => setXpAmount(e.target.value.replace(/\D/g, ""))}
+            fullWidth
+            type="number"
+            inputProps={{ min: 1, step: 1 }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <StarRoundedIcon sx={{ fontSize: 18, color: "rgba(255,195,70,0.5)" }} />
+                </InputAdornment>
+              ),
+            }}
+            sx={inputSx}
+          />
+          {xpAmount !== "" && Number(xpAmount) > 0 && (() => {
+            const newXp    = Number((draft as any)?.xp ?? 0) + Number(xpAmount);
+            const newNivel = getLevelFromXp(newXp);
+            const oldNivel = (draft as any)?.nivel ?? 1;
+            return (
+              <Box sx={{ px: 1.5, py: 1, borderRadius: "10px", bgcolor: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                <Typography sx={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>
+                  Novo total:{" "}
+                  <Typography component="span" sx={{ fontWeight: 900, fontSize: 13, color: "rgba(255,220,130,0.9)" }}>
+                    {newXp.toLocaleString("pt-BR")} XP
+                  </Typography>
+                  {newNivel > oldNivel && (
+                    <Typography component="span" sx={{ ml: 1, fontWeight: 900, fontSize: 13, color: "rgba(120,220,140,0.9)" }}>
+                      🎉 Nível {newNivel}!
+                    </Typography>
+                  )}
+                </Typography>
+              </Box>
+            );
+          })()}
         </Stack>
       </AppDialog>
 

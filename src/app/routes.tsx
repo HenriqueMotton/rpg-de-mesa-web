@@ -10,6 +10,7 @@ import { getToken } from "../shared/auth/token";
 import PersonagensPage from "../pages/personagens/PersonagensPage";
 import CreateCharacterPage from "../pages/personagens/CreateCharacterPage";
 import ViewCharacterPage from "../pages/personagens/ViewCharacterPage";
+import InventoryPage from "../pages/personagens/InventoryPage";
 
 export const ROUTES = {
   login: "/login",
@@ -18,8 +19,8 @@ export const ROUTES = {
   personagens: "/personagens",
   personagemNovo: "/personagens/novo",
   personagem: "/personagens/:id",
+  inventario: "/personagens/:id/inventario",
 
-  rolagens: "/rolagens",
   notas: "/notas",
   config: "/config",
 } as const;
@@ -45,11 +46,12 @@ export const routes: RouteObject[] = [
       { index: true, element: <Navigate to={ROUTES.personagens} replace /> },
 
       {
-        path: ROUTES.personagens.slice(1), 
+        path: ROUTES.personagens.slice(1),
         children: [
-          { index: true, element: <PersonagensPage /> },          
-          { path: "novo", element: <CreateCharacterPage /> },    
+          { index: true, element: <PersonagensPage /> },
+          { path: "novo", element: <CreateCharacterPage /> },
           { path: ":id", element: <ViewCharacterPage /> },
+          { path: ":id/inventario", element: <InventoryPage /> },
         ],
       },
       

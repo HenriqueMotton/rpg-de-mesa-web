@@ -13,34 +13,60 @@ import {
 import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 import GroupRoundedIcon from "@mui/icons-material/GroupRounded";
 import CasinoRoundedIcon from "@mui/icons-material/CasinoRounded";
+import Inventory2RoundedIcon from "@mui/icons-material/Inventory2Rounded";
 import NoteAltRoundedIcon from "@mui/icons-material/NoteAltRounded";
 import SettingsRoundedIcon from "@mui/icons-material/SettingsRounded";
+import PersonRoundedIcon from "@mui/icons-material/PersonRounded";
 
 import { ROUTES } from "../app/routes";
 import { useAuthStore } from "../modules/auth/auth.store";
+import { useCharactersStore } from "../modules/characters/characters.store";
 
 const HEADER_H = 58;
 const NAV_H = 62;
 
+const NAV_INVENTARIO = "/inventario";
+
 export default function AppShell() {
-  const NAV_ITEMS = [
-    { label: "Personagens", value: ROUTES.personagens,  icon: <GroupRoundedIcon /> },
-    { label: "Rolagens",    value: ROUTES.rolagens,     icon: <CasinoRoundedIcon /> },
-    { label: "Notas",       value: ROUTES.notas,        icon: <NoteAltRoundedIcon /> },
-    { label: "Config",      value: ROUTES.config,       icon: <SettingsRoundedIcon /> },
-  ];
-  const location = useLocation();
+  const location  = useLocation();
   const navigate  = useNavigate();
   const logout    = useAuthStore((s) => s.logout);
+  const selected  = useCharactersStore((s) => s.selected);
 
   const path = location.pathname;
 
+  // Detecta se está no contexto de um personagem específico
+  const charMatch = path.match(/^\/personagens\/(\d+)/);
+  const charId = charMatch?.[1];
+  const isCharacterContext = !!charId;
+
+  const charName     = selected?.name ?? "Personagem";
+  const charNameShort = charName.length > 9 ? charName.slice(0, 9) + "…" : charName;
+
+  const NAV_ITEMS = [
+    { label: charNameShort, value: `/personagens/${charId}`, icon: <PersonRoundedIcon /> },
+    { label: "Inventário",  value: NAV_INVENTARIO,            icon: <Inventory2RoundedIcon /> },
+    { label: "Notas",       value: ROUTES.notas,              icon: <NoteAltRoundedIcon /> },
+    { label: "Config",      value: ROUTES.config,             icon: <SettingsRoundedIcon /> },
+  ];
+
   const navValue = (() => {
+    if (path.includes("/inventario")) return NAV_INVENTARIO;
     for (const item of NAV_ITEMS) {
-      if (path.startsWith(item.value)) return item.value;
+      if (item.value && path.startsWith(item.value)) return item.value;
     }
-    return ROUTES.personagens;
+    return `/personagens/${charId}`;
   })();
+
+  function handleNavChange(_: unknown, value: string) {
+    if (value === NAV_INVENTARIO) {
+      if (charId) {
+        navigate(`/personagens/${charId}/inventario`);
+      }
+    } else {
+      navigate(value);
+    }
+  }
 
   return (
     <Box sx={{ minHeight: "100vh", bgcolor: "#07090F" }}>
@@ -115,6 +141,30 @@ export default function AppShell() {
             </Typography>
           </Box>
 
+          {/* Voltar para lista de personagens (só no contexto de personagem) */}
+          {isCharacterContext && (
+            <IconButton
+              onClick={() => navigate(ROUTES.personagens)}
+              size="small"
+              sx={{
+                width: 34,
+                height: 34,
+                color: "rgba(255,255,255,0.4)",
+                border: "1px solid rgba(255,255,255,0.07)",
+                borderRadius: "9px",
+                bgcolor: "rgba(255,255,255,0.03)",
+                transition: "all 0.18s",
+                "&:hover": {
+                  color: "rgba(160,130,255,0.9)",
+                  bgcolor: "rgba(120,85,255,0.1)",
+                  borderColor: "rgba(120,85,255,0.22)",
+                },
+              }}
+            >
+              <GroupRoundedIcon sx={{ fontSize: 16 }} />
+            </IconButton>
+          )}
+
           {/* Logout */}
           <IconButton
             onClick={() => { logout(); navigate(ROUTES.login); }}
@@ -140,12 +190,12 @@ export default function AppShell() {
       </AppBar>
 
       {/* ── Content ── */}
-      <Box sx={{ pt: `${HEADER_H}px`, pb: `${NAV_H + 8}px` }}>
+      <Box sx={{ pt: `${HEADER_H}px`, pb: isCharacterContext ? `${NAV_H + 8}px` : 0 }}>
         <Outlet />
       </Box>
 
-      {/* ── Bottom Nav ── */}
-      <Paper
+      {/* ── Bottom Nav (só no contexto de personagem) ── */}
+      {isCharacterContext && <Paper
         elevation={0}
         sx={{
           position: "fixed",
@@ -173,7 +223,7 @@ export default function AppShell() {
         <BottomNavigation
           showLabels
           value={navValue}
-          onChange={(_, v) => navigate(v)}
+          onChange={handleNavChange}
           sx={{
             height: NAV_H,
             bgcolor: "transparent",
@@ -250,7 +300,7 @@ export default function AppShell() {
             );
           })}
         </BottomNavigation>
-      </Paper>
+      </Paper>}
     </Box>
   );
 }

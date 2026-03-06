@@ -7,6 +7,9 @@ export type CharacterListItem = {
   health: number;
   maxHealth: number;
   nivel: number;
+  xp: number;
+  race?: { id: number; name: string } | null;
+  subRace?: { id: number; name: string } | null;
 };
 
 export type Character = CharacterListItem & {
@@ -36,6 +39,8 @@ export type CreateCharacterPayload = {
   selectedSkills: number[];
   money: number;
   health: number;
+  raceId?: number;
+  subRaceId?: number;
 };
 
 export async function listCharacters() {
@@ -70,6 +75,7 @@ export async function saveCharacter(character: any) {
     health: character.health,
     maxHealth: character.maxHealth,
     money: character.money,
+    xp: character.xp ?? 0,
     attributes: { ...(character.idAttribute ?? character.attributes) },
   };
   await http.put(`/characters/${character.id}`, payload);

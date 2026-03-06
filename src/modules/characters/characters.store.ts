@@ -19,6 +19,8 @@ type CharacterDraft = {
   maxHealth: number;
 
   selectedSkills: number[];
+  selectedRaceId: number | null;
+  selectedSubRaceId: number | null;
 };
 
 const DEFAULT_DRAFT: CharacterDraft = {
@@ -38,6 +40,8 @@ const DEFAULT_DRAFT: CharacterDraft = {
   maxHealth: 8,
 
   selectedSkills: [],
+  selectedRaceId: null,
+  selectedSubRaceId: null,
 };
 
 type CharactersStore = {
@@ -62,6 +66,9 @@ type CharactersStore = {
 
   toggleDraftSkill: (skill: number) => void;
   setDraftSkills: (skills: number[]) => void;
+
+  setDraftRaceId: (id: number | null) => void;
+  setDraftSubRaceId: (id: number | null) => void;
 };
 
 export const useCharactersStore = create<CharactersStore>((set) => ({
@@ -103,4 +110,10 @@ export const useCharactersStore = create<CharactersStore>((set) => ({
 
   setDraftSkills: (selectedSkills) =>
     set((s) => ({ draft: { ...s.draft, selectedSkills } })),
+
+  setDraftRaceId: (selectedRaceId) =>
+    set((s) => ({ draft: { ...s.draft, selectedRaceId } })),
+
+  setDraftSubRaceId: (selectedSubRaceId) =>
+    set((s) => ({ draft: { ...s.draft, selectedSubRaceId } })),
 }));

@@ -23,6 +23,11 @@ import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import RefreshRoundedIcon      from "@mui/icons-material/RefreshRounded";
 
 import { useNavigate } from "react-router-dom";
+
+const RACE_ICON: Record<string, string> = {
+  "Anão": "⛏️", "Elfo": "🌿", "Meio-Elfo": "🌟", "Humano": "🏛️",
+  "Draconato": "🐉", "Gnomo": "⚙️", "Meio-Orc": "💪", "Hobbit": "🌻",
+};
 import {
   deleteCharacter,
   getCharacter,
@@ -186,7 +191,7 @@ export default function PersonagensPage() {
 
                     {/* Left */}
                     <Box sx={{ minWidth: 0, flex: 1 }}>
-                      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.2 }}>
+                      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: c.race ? 0.4 : 1.2 }}>
                         <Typography sx={{ fontWeight: 800, fontSize: 15.5, letterSpacing: -0.3, color: "white" }}>
                           {c.name}
                         </Typography>
@@ -197,6 +202,13 @@ export default function PersonagensPage() {
                           </Typography>
                         </Box>
                       </Stack>
+
+                      {c.race && (
+                        <Typography sx={{ fontSize: 12, color: "rgba(255,255,255,0.32)", mb: 1, letterSpacing: "0.01em" }}>
+                          {RACE_ICON[c.race.name] ?? "🎲"} {c.race.name}
+                          {c.subRace ? ` · ${c.subRace.name}` : ""}
+                        </Typography>
+                      )}
 
                       {/* HP bar */}
                       <Box sx={{ mb: 1.4 }}>
