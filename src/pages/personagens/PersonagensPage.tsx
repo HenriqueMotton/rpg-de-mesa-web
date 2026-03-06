@@ -28,6 +28,8 @@ const RACE_ICON: Record<string, string> = {
   "Anão": "⛏️", "Elfo": "🌿", "Meio-Elfo": "🌟", "Humano": "🏛️",
   "Draconato": "🐉", "Gnomo": "⚙️", "Meio-Orc": "💪", "Hobbit": "🌻",
 };
+
+
 import {
   deleteCharacter,
   getCharacter,
@@ -203,10 +205,11 @@ export default function PersonagensPage() {
                         </Box>
                       </Stack>
 
-                      {c.race && (
+                      {(c.dndClass || c.race) && (
                         <Typography sx={{ fontSize: 12, color: "rgba(255,255,255,0.32)", mb: 1, letterSpacing: "0.01em" }}>
-                          {RACE_ICON[c.race.name] ?? "🎲"} {c.race.name}
-                          {c.subRace ? ` · ${c.subRace.name}` : ""}
+                          {c.dndClass && `${c.dndClass.icon} ${c.dndClass.name}`}
+                          {c.dndClass && c.race && " · "}
+                          {c.race && `${RACE_ICON[c.race.name] ?? "🎲"} ${c.race.name}${c.subRace ? ` · ${c.subRace.name}` : ""}`}
                         </Typography>
                       )}
 

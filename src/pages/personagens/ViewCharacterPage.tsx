@@ -8,7 +8,7 @@ import {
   InputAdornment,
   Stack,
   TextField,
-  Tooltip,
+
   Typography,
 } from "@mui/material";
 
@@ -18,8 +18,6 @@ import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import RemoveRoundedIcon from "@mui/icons-material/RemoveRounded";
-import SaveRoundedIcon from "@mui/icons-material/SaveRounded";
-import UndoRoundedIcon from "@mui/icons-material/UndoRounded";
 import StarRoundedIcon from "@mui/icons-material/StarRounded";
 
 import confetti from "canvas-confetti";
@@ -33,16 +31,17 @@ import {
   GoldAmount, GoldIconBox, GoldLabel, GoldPill,
   AttrGrid, AttrHint, AttrProgressTrack, AttrRangeLabel,
   SkillEmptyBox, SkillIconBox, SkillRow,
-  FabCenterLabel, FabDiscardButton, FabDot, FabPill, FabSaveButton,
 } from "./ViewCharacter.styles";
 
 import AppDialog, { AppDialogConfirmButton } from "../../components/ui/AppDialog";
+import PendingChangesFab from "../../components/ui/PendingChangesFab";
 import {
   getCharacter,
   saveCharacter,
   type Character,
 } from "../../modules/characters/characters.api";
 import { getInventory } from "../../modules/inventory/inventory.api";
+import SpellQuickPanel from "./SpellQuickPanel";
 import { useCharactersStore } from "../../modules/characters/characters.store";
 
 
@@ -448,10 +447,11 @@ export default function ViewCharacterPage() {
           <Box>
             <PageLabel>{loading ? " " : "Ficha do Personagem"}</PageLabel>
             <PageTitle>{loading ? "Carregando…" : (draft?.name ?? "Personagem")}</PageTitle>
-            {!loading && (draft as any)?.race && (
+            {!loading && ((draft as any)?.dndClass || (draft as any)?.race) && (
               <Typography sx={{ fontSize: 12.5, color: "rgba(255,255,255,0.28)", mt: 0.25, letterSpacing: "0.01em" }}>
-                {RACE_ICON[(draft as any).race.name] ?? "🎲"} {(draft as any).race.name}
-                {(draft as any).subRace ? ` · ${(draft as any).subRace.name}` : ""}
+                {(draft as any).dndClass && `${(draft as any).dndClass.icon} ${(draft as any).dndClass.name}`}
+                {(draft as any).dndClass && (draft as any).race && " · "}
+                {(draft as any).race && `${RACE_ICON[(draft as any).race.name] ?? "🎲"} ${(draft as any).race.name}${(draft as any).subRace ? ` · ${(draft as any).subRace.name}` : ""}`}
               </Typography>
             )}
             {(loading || saving) && <LoadingBar />}
@@ -728,6 +728,7 @@ export default function ViewCharacterPage() {
                     </Stack>
                   )}
                 </Box>
+
               </Stack>
             )}
           </Box>
@@ -735,42 +736,12 @@ export default function ViewCharacterPage() {
       </Container>
 
       {/* ── FAB ─────────────────────────────────────────────────────────────── */}
-      <Box sx={{
-        position: "fixed", bottom: 80, left: "50%", zIndex: 1300,
-        pointerEvents: fabVisible ? "auto" : "none",
-        transform: fabVisible
-          ? "translateX(-50%) translateY(0) scale(1)"
-          : "translateX(-50%) translateY(80px) scale(0.92)",
-        opacity: fabVisible ? 1 : 0,
-        transition: "transform .38s cubic-bezier(.34,1.48,.64,1), opacity .22s",
-      }}>
-        <FabPill direction="row" alignItems="stretch">
-
-          <Tooltip title="Descartar alterações" placement="top" arrow>
-            <span>
-              <FabDiscardButton onClick={handleDiscard} disabled={saving}>
-                <UndoRoundedIcon sx={{ fontSize: 17 }} />
-              </FabDiscardButton>
-            </span>
-          </Tooltip>
-
-          <Box sx={{ display: "flex", alignItems: "center", px: 1.8 }}>
-            <Stack alignItems="center">
-              <FabDot />
-              <FabCenterLabel>alterações pendentes</FabCenterLabel>
-            </Stack>
-          </Box>
-
-          <FabSaveButton
-            onClick={handleSave}
-            disabled={saving}
-            startIcon={saving ? <CircularProgress size={13} sx={{ color: "rgba(200,180,255,0.7)" }} /> : <SaveRoundedIcon sx={{ fontSize: "15px !important" }} />}
-          >
-            Salvar
-          </FabSaveButton>
-
-        </FabPill>
-      </Box>
+      <PendingChangesFab
+        visible={fabVisible}
+        saving={saving}
+        onSave={handleSave}
+        onDiscard={handleDiscard}
+      />
 
       {/* ── HP DIALOG ───────────────────────────────────────────────────────── */}
       <AppDialog
@@ -976,6 +947,11 @@ export default function ViewCharacterPage() {
           })()}
         </Stack>
       </AppDialog>
+
+      {/* ── Spell Quick Panel ───────────────────────────────────────────────── */}
+      {id && ((draft as any)?.dndClass?.classSpells?.length ?? 0) > 0 && (
+        <SpellQuickPanel characterId={id} />
+      )}
 
     </Page>
   );

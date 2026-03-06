@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Box, Container, Stack } from "@mui/material";
 import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
@@ -12,11 +13,24 @@ import {
   PageLabel,
   PageTitle,
 } from "./ViewCharacter.styles";
-import InventorySection from "./InventorySection";
-import EquipmentSection from "./EquipmentSection";
-export default function InventoryPage() {
+import GrimorioSection from "./GrimorioSection";
+import { getCharacter } from "../../modules/characters/characters.api";
+import type { ClassSpellEntry } from "../../modules/classes/classes.api";
+
+export default function GrimorioPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+
+  const [classSpells, setClassSpells]     = useState<ClassSpellEntry[]>([]);
+  const [characterNivel, setCharacterNivel] = useState(1);
+
+  useEffect(() => {
+    if (!id) return;
+    getCharacter(id).then((c) => {
+      setCharacterNivel((c as any).nivel ?? 1);
+      setClassSpells((c as any).dndClass?.classSpells ?? []);
+    }).catch(() => {});
+  }, [id]);
 
   return (
     <Page>
@@ -33,7 +47,7 @@ export default function InventoryPage() {
         >
           <Box>
             <PageLabel>Personagem</PageLabel>
-            <PageTitle>Inventário</PageTitle>
+            <PageTitle>Grimório</PageTitle>
           </Box>
           <BackButton
             onClick={() => navigate(`/personagens/${id}`)}
@@ -43,17 +57,15 @@ export default function InventoryPage() {
           </BackButton>
         </Stack>
 
-        {/* Equipment — sem peso, sempre carregado */}
-        <Glass elevation={0} sx={{ mb: 2 }}>
-          <Box sx={{ p: { xs: 2, sm: 2.25 } }}>
-            {id && <EquipmentSection characterId={id} />}
-          </Box>
-        </Glass>
-
-        {/* Inventory — itens com peso */}
         <Glass elevation={0}>
           <Box sx={{ p: { xs: 2, sm: 2.25 } }}>
-            {id && <InventorySection characterId={id} />}
+            {id && (
+              <GrimorioSection
+                characterId={id}
+                classSpells={classSpells}
+                characterNivel={characterNivel}
+              />
+            )}
           </Box>
         </Glass>
       </Container>

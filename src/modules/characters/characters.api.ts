@@ -10,6 +10,7 @@ export type CharacterListItem = {
   xp: number;
   race?: { id: number; name: string } | null;
   subRace?: { id: number; name: string } | null;
+  dndClass?: { id: number; name: string; icon: string } | null;
 };
 
 export type Character = CharacterListItem & {
@@ -41,6 +42,7 @@ export type CreateCharacterPayload = {
   health: number;
   raceId?: number;
   subRaceId?: number;
+  classId?: number;
 };
 
 export async function listCharacters() {

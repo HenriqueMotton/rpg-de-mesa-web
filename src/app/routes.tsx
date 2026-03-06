@@ -6,11 +6,14 @@ import LoginPage from "../pages/login/LoginPage";
 import NotFoundPage from "../pages/NotFoundPage";
 import SignUpPage from "../pages/signUp/SignUpPage";
 
-import { getToken } from "../shared/auth/token";
+import { getToken, decodeToken } from "../shared/auth/token";
 import PersonagensPage from "../pages/personagens/PersonagensPage";
 import CreateCharacterPage from "../pages/personagens/CreateCharacterPage";
 import ViewCharacterPage from "../pages/personagens/ViewCharacterPage";
 import InventoryPage from "../pages/personagens/InventoryPage";
+import GrimorioPage from "../pages/personagens/GrimorioPage";
+import ClassePage from "../pages/personagens/ClassePage";
+import ConfigPage from "../pages/ConfigPage";
 
 export const ROUTES = {
   login: "/login",
@@ -20,8 +23,9 @@ export const ROUTES = {
   personagemNovo: "/personagens/novo",
   personagem: "/personagens/:id",
   inventario: "/personagens/:id/inventario",
+  grimorio: "/personagens/:id/grimorio",
+  classe: "/personagens/:id/classe",
 
-  notas: "/notas",
   config: "/config",
 } as const;
 
@@ -31,10 +35,17 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function RequireMaster({ children }: { children: React.ReactNode }) {
+  const token = getToken();
+  const payload = decodeToken(token);
+  if (!token || payload.isMaster !== true) return <Navigate to={ROUTES.personagens} replace />;
+  return <>{children}</>;
+}
+
 export const routes: RouteObject[] = [
   { path: ROUTES.login, element: <LoginPage /> },
   { path: ROUTES.signup, element: <SignUpPage /> },
-  
+
   {
     path: "/",
     element: (
@@ -52,13 +63,20 @@ export const routes: RouteObject[] = [
           { path: "novo", element: <CreateCharacterPage /> },
           { path: ":id", element: <ViewCharacterPage /> },
           { path: ":id/inventario", element: <InventoryPage /> },
+          { path: ":id/grimorio", element: <GrimorioPage /> },
+          { path: ":id/classe", element: <ClassePage /> },
         ],
       },
-      
-      // { path: ROUTES.personagens.slice(1), element: <PersonagensPage /> },
-      // { path: ROUTES.rolagens.slice(1), element: <RolagensPage /> },
-      // { path: ROUTES.notas.slice(1), element: <NotasPage /> },
-      // { path: ROUTES.config.slice(1), element: <ConfigPage /> },
+
+      {
+        path: ROUTES.config.slice(1),
+        element: (
+          <RequireMaster>
+            <ConfigPage />
+          </RequireMaster>
+        ),
+      },
+
       { path: "*", element: <NotFoundPage /> },
     ],
   },

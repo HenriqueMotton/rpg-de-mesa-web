@@ -14,9 +14,10 @@ import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 import GroupRoundedIcon from "@mui/icons-material/GroupRounded";
 import CasinoRoundedIcon from "@mui/icons-material/CasinoRounded";
 import Inventory2RoundedIcon from "@mui/icons-material/Inventory2Rounded";
-import NoteAltRoundedIcon from "@mui/icons-material/NoteAltRounded";
+import AutoStoriesRoundedIcon from "@mui/icons-material/AutoStoriesRounded";
 import SettingsRoundedIcon from "@mui/icons-material/SettingsRounded";
 import PersonRoundedIcon from "@mui/icons-material/PersonRounded";
+import SchoolRoundedIcon from "@mui/icons-material/SchoolRounded";
 
 import { ROUTES } from "../app/routes";
 import { useAuthStore } from "../modules/auth/auth.store";
@@ -26,11 +27,14 @@ const HEADER_H = 58;
 const NAV_H = 62;
 
 const NAV_INVENTARIO = "/inventario";
+const NAV_CLASSE     = "/classe";
+const NAV_GRIMORIO   = "/grimorio";
 
 export default function AppShell() {
   const location  = useLocation();
   const navigate  = useNavigate();
   const logout    = useAuthStore((s) => s.logout);
+  const isMaster  = useAuthStore((s) => s.isMaster);
   const selected  = useCharactersStore((s) => s.selected);
 
   const path = location.pathname;
@@ -40,18 +44,22 @@ export default function AppShell() {
   const charId = charMatch?.[1];
   const isCharacterContext = !!charId;
 
-  const charName     = selected?.name ?? "Personagem";
+  const charName      = selected?.name ?? "Personagem";
   const charNameShort = charName.length > 9 ? charName.slice(0, 9) + "…" : charName;
+  const hasSpells     = ((selected as any)?.dndClass?.classSpells?.length ?? 0) > 0;
 
   const NAV_ITEMS = [
     { label: charNameShort, value: `/personagens/${charId}`, icon: <PersonRoundedIcon /> },
-    { label: "Inventário",  value: NAV_INVENTARIO,            icon: <Inventory2RoundedIcon /> },
-    { label: "Notas",       value: ROUTES.notas,              icon: <NoteAltRoundedIcon /> },
-    { label: "Config",      value: ROUTES.config,             icon: <SettingsRoundedIcon /> },
+    { label: "Inventário",  value: NAV_INVENTARIO,           icon: <Inventory2RoundedIcon /> },
+    { label: "Classe",      value: NAV_CLASSE,               icon: <SchoolRoundedIcon /> },
+    ...(hasSpells ? [{ label: "Grimório", value: NAV_GRIMORIO, icon: <AutoStoriesRoundedIcon /> }] : []),
+    ...(isMaster ? [{ label: "Config",   value: ROUTES.config, icon: <SettingsRoundedIcon /> }] : []),
   ];
 
   const navValue = (() => {
     if (path.includes("/inventario")) return NAV_INVENTARIO;
+    if (path.includes("/classe"))     return NAV_CLASSE;
+    if (path.includes("/grimorio"))   return NAV_GRIMORIO;
     for (const item of NAV_ITEMS) {
       if (item.value && path.startsWith(item.value)) return item.value;
     }
@@ -60,9 +68,11 @@ export default function AppShell() {
 
   function handleNavChange(_: unknown, value: string) {
     if (value === NAV_INVENTARIO) {
-      if (charId) {
-        navigate(`/personagens/${charId}/inventario`);
-      }
+      if (charId) navigate(`/personagens/${charId}/inventario`);
+    } else if (value === NAV_CLASSE) {
+      if (charId) navigate(`/personagens/${charId}/classe`);
+    } else if (value === NAV_GRIMORIO) {
+      if (charId) navigate(`/personagens/${charId}/grimorio`);
     } else {
       navigate(value);
     }

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Alert,
   Box,
@@ -28,6 +28,7 @@ import {
   SectionLabelText,
   SkillEmptyBox,
 } from "./ViewCharacter.styles";
+import PendingChangesFab from "../../components/ui/PendingChangesFab";
 import {
   getInventory,
   addInventoryItem,
@@ -159,6 +160,10 @@ export default function InventorySection({ characterId }: Props) {
   const [editItem, setEditItem] = useState<InventoryItem | null>(null);
   const [deleteItem, setDeleteItem] = useState<InventoryItem | null>(null);
 
+  const [draftQty, setDraftQty] = useState<Map<number, number>>(new Map());
+  const [batchSaving, setBatchSaving] = useState(false);
+  const [fabVisible, setFabVisible] = useState(false);
+
   const [form, setForm] = useState(EMPTY_FORM);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -170,12 +175,20 @@ export default function InventorySection({ characterId }: Props) {
       setItems(data.items);
       setTotalWeight(data.totalWeight);
       setCarryingCapacity(data.carryingCapacity);
+      setDraftQty(new Map());
     } catch {
       setError("Não foi possível carregar o inventário.");
     } finally {
       setLoading(false);
     }
   }, [characterId]);
+
+  const dirty = useMemo(() => draftQty.size > 0, [draftQty]);
+
+  useEffect(() => {
+    const t = setTimeout(() => setFabVisible(dirty), 30);
+    return () => clearTimeout(t);
+  }, [dirty]);
 
   useEffect(() => {
     load();
@@ -252,6 +265,41 @@ export default function InventorySection({ characterId }: Props) {
     } finally {
       setSaving(false);
     }
+  }
+
+  function adjustQty(item: InventoryItem, delta: number) {
+    const current = draftQty.get(item.id) ?? item.quantity;
+    const next = current + delta;
+    if (next < 1) return;
+    setDraftQty((prev) => {
+      const m = new Map(prev);
+      if (next === item.quantity) {
+        m.delete(item.id);
+      } else {
+        m.set(item.id, next);
+      }
+      return m;
+    });
+  }
+
+  async function handleBatchSave() {
+    setBatchSaving(true);
+    try {
+      await Promise.allSettled(
+        [...draftQty.entries()].map(([itemId, qty]) =>
+          updateInventoryItem(itemId, { quantity: qty })
+        )
+      );
+      await load();
+    } catch {
+      setError("Não foi possível salvar as alterações.");
+    } finally {
+      setBatchSaving(false);
+    }
+  }
+
+  function handleDiscard() {
+    setDraftQty(new Map());
   }
 
   async function handleDelete() {
@@ -548,18 +596,54 @@ export default function InventorySection({ characterId }: Props) {
                       {item.name}
                     </Typography>
                     <Typography sx={{ fontSize: 11.5, color: "rgba(255,255,255,0.35)" }}>
-                      {item.category ?? "Outros"}
+                      {item.category ?? "Outros"}{item.weight > 0 ? ` · ${item.weight} kg` : ""}
                     </Typography>
                   </Box>
 
-                  <Stack alignItems="flex-end" sx={{ flexShrink: 0, mr: 0.5 }}>
-                    <Typography sx={{ fontSize: 12, fontWeight: 800, color: "rgba(255,255,255,0.6)" }}>
-                      x{item.quantity}
-                    </Typography>
-                    <Typography sx={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>
-                      {item.weight > 0 ? `${item.weight} kg` : "—"}
-                    </Typography>
-                  </Stack>
+                  {/* Quantity stepper */}
+                  {(() => {
+                    const displayQty = draftQty.get(item.id) ?? item.quantity;
+                    const changed = draftQty.has(item.id);
+                    return (
+                      <Stack direction="row" alignItems="center" sx={{ flexShrink: 0, gap: 0.25 }}>
+                        <IconButton
+                          size="small"
+                          onClick={() => adjustQty(item, -1)}
+                          disabled={displayQty <= 1}
+                          sx={{
+                            width: 26, height: 26,
+                            color: "rgba(255,255,255,0.4)",
+                            "&:hover": { color: "rgba(255,255,255,0.85)", bgcolor: "rgba(255,255,255,0.07)" },
+                            "&.Mui-disabled": { color: "rgba(255,255,255,0.15)" },
+                          }}
+                        >
+                          <Typography sx={{ fontSize: 16, lineHeight: 1, fontWeight: 300 }}>−</Typography>
+                        </IconButton>
+
+                        <Box sx={{ width: 28, textAlign: "center" }}>
+                          <Typography sx={{
+                            fontSize: 13, fontWeight: 800,
+                            color: changed ? "rgba(200,175,255,0.95)" : "rgba(255,255,255,0.7)",
+                            transition: "color .15s",
+                          }}>
+                            {displayQty}
+                          </Typography>
+                        </Box>
+
+                        <IconButton
+                          size="small"
+                          onClick={() => adjustQty(item, +1)}
+                          sx={{
+                            width: 26, height: 26,
+                            color: "rgba(255,255,255,0.4)",
+                            "&:hover": { color: "rgba(255,255,255,0.85)", bgcolor: "rgba(255,255,255,0.07)" },
+                          }}
+                        >
+                          <Typography sx={{ fontSize: 16, lineHeight: 1, fontWeight: 300 }}>+</Typography>
+                        </IconButton>
+                      </Stack>
+                    );
+                  })()}
 
                   <Tooltip title="Editar" placement="top">
                     <IconButton
@@ -627,6 +711,13 @@ export default function InventorySection({ characterId }: Props) {
         () => setEditItem(null),
         handleEdit,
       )}
+
+      <PendingChangesFab
+        visible={fabVisible}
+        saving={batchSaving}
+        onSave={handleBatchSave}
+        onDiscard={handleDiscard}
+      />
 
       {/* Delete confirm dialog */}
       <AppDialog

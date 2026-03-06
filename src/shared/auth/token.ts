@@ -11,3 +11,12 @@ export function setToken(token: string) {
 export function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
 }
+
+export function decodeToken(token: string | null): Record<string, unknown> {
+  if (!token) return {};
+  try {
+    return JSON.parse(atob(token.split(".")[1]));
+  } catch {
+    return {};
+  }
+}

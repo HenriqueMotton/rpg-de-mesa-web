@@ -9,6 +9,7 @@ import {
   Dialog,
   DialogContent,
   Divider,
+  Popover,
   IconButton,
   InputAdornment,
   LinearProgress,
@@ -27,18 +28,33 @@ import RemoveRoundedIcon         from "@mui/icons-material/RemoveRounded";
 import PsychologyRoundedIcon     from "@mui/icons-material/PsychologyRounded";
 import ArrowBackRoundedIcon      from "@mui/icons-material/ArrowBackRounded";
 import CheckRoundedIcon          from "@mui/icons-material/CheckRounded";
+import InfoOutlinedIcon          from "@mui/icons-material/InfoOutlined";
 
 import { useNavigate } from "react-router-dom";
 import { ROUTES } from "../../app/routes";
 import { createCharacter } from "../../modules/characters/characters.api";
+import { addInventoryItem } from "../../modules/inventory/inventory.api";
 import { useCharactersStore } from "../../modules/characters/characters.store";
 import { listRaces, type Race } from "../../modules/races/races.api";
+import { listClasses, type DndClass } from "../../modules/classes/classes.api";
+import { listKits, type Kit } from "../../modules/kits/kits.api";
+import { addEquipment } from "../../modules/equipment/equipment.api";
 import { Glass, Page, OrbTop, OrbSide, Noise } from "./CreateCharacter.styles";
 import AppDialog, { AppDialogConfirmButton } from "../../components/ui/AppDialog";
 import RollDialog from "../../components/ui/RollDialog";
 import SkillsDialog from "../../components/ui/SkillsDialog";
 
 type AttrKey = "forca" | "destreza" | "constituicao" | "inteligencia" | "sabedoria" | "carisma";
+
+// ─── Kit name matching ────────────────────────────────────────────────────────
+function normalize(s: string) {
+  return s.toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+function findKit(name: string, kits: Kit[]): Kit | undefined {
+  const key = normalize(name);
+  return kits.find((k) => normalize(k.name) === key);
+}
 
 const ATTR_BADGE: Record<AttrKey, string> = {
   forca: "FOR", destreza: "DES", constituicao: "CON",
@@ -57,6 +73,7 @@ const ATTRS: { key: AttrKey; label: string }[] = [
   { key: "sabedoria",    label: "Sabedoria" },
   { key: "carisma",      label: "Carisma" },
 ];
+
 
 const RACE_ICON: Record<string, string> = {
   "Anão":      "⛏️",
@@ -200,10 +217,11 @@ export default function CreateCharacterPage() {
   const toggleDraftSkill        = useCharactersStore((s) => s.toggleDraftSkill);
   const setDraftRaceId          = useCharactersStore((s) => s.setDraftRaceId);
   const setDraftSubRaceId       = useCharactersStore((s) => s.setDraftSubRaceId);
+  const setDraftClass           = useCharactersStore((s) => s.setDraftClass);
 
-  const { name, attributes, pointsRemaining, money, health, maxHealth, selectedSkills, selectedRaceId, selectedSubRaceId } = draft;
+  const { name, attributes, pointsRemaining, money, health, maxHealth, selectedSkills, selectedRaceId, selectedSubRaceId, selectedClassId } = draft;
 
-  const [step,       setStep]       = useState<1 | 2>(1);
+  const [step,       setStep]       = useState<1 | 2 | 3>(1);
   const [saving,     setSaving]     = useState(false);
   const [error,      setError]      = useState<string | null>(null);
   const [skillsOpen, setSkillsOpen] = useState(false);
@@ -211,15 +229,45 @@ export default function CreateCharacterPage() {
   const [healthOpen, setHealthOpen] = useState(false);
   const [tempRoll,   setTempRoll]   = useState("");
 
-  const [races,        setRaces]        = useState<Race[]>([]);
-  const [racesLoading, setRacesLoading] = useState(false);
-  const [detailRace,   setDetailRace]   = useState<Race | null>(null);
-  const [tempSubRaceId, setTempSubRaceId] = useState<number | null>(null);
+  const [races,          setRaces]          = useState<Race[]>([]);
+  const [racesLoading,   setRacesLoading]   = useState(false);
+  const [detailRace,     setDetailRace]     = useState<Race | null>(null);
+  const [tempSubRaceId,  setTempSubRaceId]  = useState<number | null>(null);
+  const [classes,           setClasses]           = useState<DndClass[]>([]);
+  const [classesLoading,    setClassesLoading]    = useState(false);
+  const [kits,              setKits]              = useState<Kit[]>([]);
+  const [detailClass,       setDetailClass]       = useState<DndClass | null>(null);
+  const [imgError,          setImgError]          = useState<Record<string, boolean>>({});
+  const [pendingEquipment,  setPendingEquipment]  = useState<string[]>([]);
+  const [tempEquipSel,      setTempEquipSel]      = useState<Map<string, string | null>>(new Map());
+  const [infoAnchorEl,      setInfoAnchorEl]      = useState<HTMLButtonElement | null>(null);
+  const [infoPackKey,       setInfoPackKey]       = useState<string | null>(null);
 
   useEffect(() => {
     setRacesLoading(true);
     listRaces().then(setRaces).catch(() => {}).finally(() => setRacesLoading(false));
   }, []);
+
+  useEffect(() => {
+    setClassesLoading(true);
+    listClasses().then(setClasses).catch(() => {}).finally(() => setClassesLoading(false));
+  }, []);
+
+  useEffect(() => {
+    listKits().then(setKits).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (detailClass) {
+      const m = new Map<string, string | null>();
+      detailClass.equipment.forEach((eq) => {
+        // Pre-select first option (works for both simple items and "ou" choices)
+        const first = eq.split(/\s+ou\s+/i)[0].trim();
+        m.set(eq, first);
+      });
+      setTempEquipSel(m);
+    }
+  }, [detailClass]);
 
   const conMod        = Math.floor((attributes.constituicao - 10) / 2);
   const effectiveHp   = health + conMod;
@@ -231,7 +279,8 @@ export default function CreateCharacterPage() {
   const selectedRace    = races.find((r) => r.id === selectedRaceId) ?? null;
   const selectedSubRace = selectedRace?.subRaces?.find((sr) => sr.id === selectedSubRaceId) ?? null;
   const raceHasSubRaces = (selectedRace?.subRaces?.length ?? 0) > 0;
-  const canSave = selectedRaceId !== null && (!raceHasSubRaces || selectedSubRaceId !== null) && !saving;
+  const canGoStep3 = selectedRaceId !== null && (!raceHasSubRaces || selectedSubRaceId !== null);
+  const canSave    = canGoStep3 && selectedClassId !== null && !saving;
 
   function openRaceDetail(race: Race) {
     setTempSubRaceId(selectedRaceId === race.id ? selectedSubRaceId : null);
@@ -292,11 +341,12 @@ export default function CreateCharacterPage() {
   }
 
   async function handleSave() {
-    if (!selectedRaceId) return setError("Selecione uma raça para continuar.");
+    if (!selectedRaceId)    return setError("Selecione uma raça para continuar.");
+    if (!selectedClassId)   return setError("Selecione uma classe para continuar.");
     setError(null);
     setSaving(true);
     try {
-      await createCharacter({
+      const char = await createCharacter({
         name,
         attributes,
         selectedSkills: selectedSkills.slice(0, 5),
@@ -304,7 +354,29 @@ export default function CreateCharacterPage() {
         health,
         raceId: selectedRaceId ?? undefined,
         subRaceId: selectedSubRaceId ?? undefined,
+        classId: selectedClassId ?? undefined,
       });
+
+      if (pendingEquipment.length > 0 && (char as any)?.id) {
+        const charId = (char as any).id;
+
+        await Promise.allSettled(
+          pendingEquipment.map((itemName) => {
+            const kit = findKit(itemName, kits);
+            if (kit) {
+              // Kit → expande itens com peso no inventário
+              return Promise.allSettled(
+                kit.items.map(({ name, quantity, weight }) =>
+                  addInventoryItem(charId, { name, quantity, weight, category: "Equipamento" })
+                )
+              );
+            }
+            // Item simples → equipment sem peso
+            return addEquipment(charId, { name: itemName, fromClass: true });
+          })
+        );
+      }
+
       resetDraft();
       navigate(ROUTES.personagens, { replace: true });
     } catch (err: any) {
@@ -353,7 +425,7 @@ export default function CreateCharacterPage() {
         <Glass elevation={0}>
           <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
 
-            <StepIndicator current={step} total={2} />
+            <StepIndicator current={step} total={3} />
 
             {error && (
               <Alert severity="error" sx={{ mb: 2, borderRadius: "10px", py: 0.5, bgcolor: "rgba(220,60,60,0.09)", border: "1px solid rgba(220,60,60,0.18)", color: "rgba(255,150,150,0.9)", fontSize: 13, "& .MuiAlert-icon": { color: "rgba(255,110,110,0.7)", fontSize: 18 } }}>
@@ -524,10 +596,10 @@ export default function CreateCharacterPage() {
                   </Box>
                 )}
 
-                {/* Criar */}
-                <Button onClick={handleSave} variant="contained" disabled={!canSave}
+                {/* Próximo → step 3 */}
+                <Button onClick={() => { if (!canGoStep3) return setError("Selecione uma raça para continuar."); setError(null); setStep(3); }} variant="contained" disabled={!canGoStep3}
                   sx={{ py: 1.35, borderRadius: "10px", textTransform: "none", fontWeight: 700, fontSize: 14.5, background: "linear-gradient(135deg, #7B54FF 0%, #5B8FFF 100%)", boxShadow: "0 6px 24px rgba(100,70,230,0.35)", "&:hover": { boxShadow: "0 10px 32px rgba(100,70,230,0.5)", transform: "translateY(-1px)" }, "&:active": { transform: "translateY(0)" }, "&.Mui-disabled": { background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.2)" } }}>
-                  {saving ? <CircularProgress size={18} sx={{ color: "rgba(255,255,255,0.5)" }} /> : "Criar Personagem"}
+                  Próximo
                 </Button>
 
                 <Button onClick={() => { setStep(1); setError(null); }}
@@ -538,8 +610,349 @@ export default function CreateCharacterPage() {
               </Stack>
             )}
 
+            {/* ══ STEP 3 — Escolha de classe ══ */}
+            {step === 3 && (
+              <Stack spacing={2.5}>
+                <Box>
+                  <Typography sx={{ fontWeight: 800, fontSize: 15.5, color: "rgba(255,255,255,0.92)", mb: 0.5 }}>
+                    Escolha sua classe
+                  </Typography>
+                  <Typography sx={{ fontSize: 13, color: "rgba(255,255,255,0.38)", lineHeight: 1.5 }}>
+                    Sua classe define seu papel, habilidades e estilo de jogo.
+                  </Typography>
+                </Box>
+
+                {classesLoading ? (
+                  <Box sx={{ display: "grid", placeItems: "center", py: 6 }}>
+                    <CircularProgress size={28} thickness={2.5} sx={{ color: "rgba(140,90,255,0.7)" }} />
+                  </Box>
+                ) : (
+                  <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1.1 }}>
+                    {classes.map((cls) => {
+                      const selected = selectedClassId === cls.id;
+                      return (
+                        <Box
+                          key={cls.name}
+                          onClick={() => setDetailClass(cls)}
+                          sx={{
+                            borderRadius: "15px",
+                            border: `1.5px solid ${selected ? "rgba(160,130,255,0.55)" : "rgba(255,255,255,0.07)"}`,
+                            bgcolor: selected ? "rgba(120,85,255,0.12)" : "rgba(255,255,255,0.03)",
+                            p: 1.4,
+                            cursor: "pointer",
+                            transition: "all 0.18s",
+                            position: "relative",
+                            boxShadow: selected ? "0 0 18px rgba(120,85,255,0.2)" : "none",
+                            "&:hover": {
+                              border: "1.5px solid rgba(160,130,255,0.35)",
+                              bgcolor: selected ? "rgba(120,85,255,0.16)" : "rgba(120,85,255,0.07)",
+                            },
+                          }}
+                        >
+                          {selected && (
+                            <Box sx={{
+                              position: "absolute", top: 8, right: 8,
+                              width: 18, height: 18, borderRadius: "50%",
+                              bgcolor: "rgba(120,85,255,0.9)",
+                              display: "grid", placeItems: "center",
+                            }}>
+                              <CheckRoundedIcon sx={{ fontSize: 11, color: "#fff" }} />
+                            </Box>
+                          )}
+
+                          <Typography sx={{ fontSize: 20, lineHeight: 1, mb: 0.65 }}>{cls.icon}</Typography>
+
+                          <Typography sx={{ fontWeight: 800, fontSize: 13, color: "rgba(255,255,255,0.92)", lineHeight: 1.2, mb: 0.4 }}>
+                            {cls.name}
+                          </Typography>
+
+                          <Typography sx={{
+                            fontSize: 11, color: "rgba(255,255,255,0.38)", lineHeight: 1.4,
+                            display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
+                          }}>
+                            {cls.tagline}
+                          </Typography>
+                        </Box>
+                      );
+                    })}
+                  </Box>
+                )}
+
+                {/* Criar */}
+                <Button onClick={handleSave} variant="contained" disabled={!canSave}
+                  sx={{ py: 1.35, borderRadius: "10px", textTransform: "none", fontWeight: 700, fontSize: 14.5, background: "linear-gradient(135deg, #7B54FF 0%, #5B8FFF 100%)", boxShadow: "0 6px 24px rgba(100,70,230,0.35)", "&:hover": { boxShadow: "0 10px 32px rgba(100,70,230,0.5)", transform: "translateY(-1px)" }, "&:active": { transform: "translateY(0)" }, "&.Mui-disabled": { background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.2)" } }}>
+                  {saving ? <CircularProgress size={18} sx={{ color: "rgba(255,255,255,0.5)" }} /> : "Criar Personagem"}
+                </Button>
+
+                <Button onClick={() => { setStep(2); setError(null); }}
+                  startIcon={<ArrowBackRoundedIcon sx={{ fontSize: "16px !important" }} />}
+                  sx={{ textTransform: "none", fontWeight: 600, fontSize: 13.5, color: "rgba(255,255,255,0.32)", borderRadius: "10px", "&:hover": { color: "rgba(255,255,255,0.6)", bgcolor: "rgba(255,255,255,0.04)" } }}>
+                  Voltar
+                </Button>
+              </Stack>
+            )}
+
           </CardContent>
         </Glass>
+
+        {/* ── Class Detail Dialog ────────────────────────────────────────────── */}
+        <Dialog
+          open={!!detailClass}
+          onClose={() => setDetailClass(null)}
+          fullWidth
+          maxWidth="sm"
+          PaperProps={{ sx: { bgcolor: "#12101e", border: "1px solid rgba(120,85,255,0.2)", borderRadius: "20px", backgroundImage: "none", overflow: "hidden" } }}
+        >
+          {detailClass && (
+            <DialogContent sx={{ p: 0 }}>
+
+              {/* ── Image area ── */}
+              <Box sx={{ position: "relative", width: "100%", height: 200, overflow: "hidden" }}>
+                {!imgError[detailClass.name] ? (
+                  <Box
+                    component="img"
+                    src={`/classes/${detailClass.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s/g, "-")}.jpg`}
+                    alt={detailClass.name}
+                    onError={() => setImgError((prev) => ({ ...prev, [detailClass.name]: true }))}
+                    sx={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "top" }}
+                  />
+                ) : (
+                  <Box sx={{
+                    width: "100%", height: "100%",
+                    background: detailClass.imgGradient,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}>
+                    <Typography sx={{ fontSize: 80, lineHeight: 1, filter: "drop-shadow(0 4px 24px rgba(0,0,0,0.6))" }}>
+                      {detailClass.icon}
+                    </Typography>
+                  </Box>
+                )}
+                {/* gradient overlay at bottom */}
+                <Box sx={{
+                  position: "absolute", bottom: 0, left: 0, right: 0, height: 80,
+                  background: "linear-gradient(to bottom, transparent, #12101e)",
+                  pointerEvents: "none",
+                }} />
+                {/* class name over image */}
+                <Box sx={{ position: "absolute", bottom: 14, left: 20 }}>
+                  <Typography sx={{ fontWeight: 900, fontSize: 22, color: "#fff", lineHeight: 1.1, textShadow: "0 2px 12px rgba(0,0,0,0.8)" }}>
+                    {detailClass.icon} {detailClass.name}
+                  </Typography>
+                  <Typography sx={{ fontSize: 12.5, color: "rgba(255,255,255,0.55)", mt: 0.25, textShadow: "0 1px 6px rgba(0,0,0,0.8)" }}>
+                    {detailClass.tagline}
+                  </Typography>
+                </Box>
+              </Box>
+
+              {/* ── Description ── */}
+              <Box sx={{ px: 2.5, pt: 1.75, pb: 1, borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                <Typography sx={{ fontSize: 13.5, color: "rgba(255,255,255,0.6)", lineHeight: 1.65 }}>
+                  {detailClass.description}
+                </Typography>
+              </Box>
+
+              {/* ── Equipment (selectable) ── */}
+              {detailClass.equipment.length > 0 && (
+                <Box sx={{ px: 2.5, py: 1.5, borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                  <Stack direction="row" alignItems="center" sx={{ mb: 1 }}>
+                    <Typography sx={{ flex: 1, fontSize: 10.5, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(180,150,255,0.55)" }}>
+                      Equipamento inicial
+                    </Typography>
+                    <Typography sx={{ fontSize: 10.5, color: "rgba(255,255,255,0.25)" }}>
+                      {[...tempEquipSel.values()].filter(Boolean).length}/{detailClass.equipment.length} selecionados
+                    </Typography>
+                  </Stack>
+
+                  <Stack spacing={0.75}>
+                    {detailClass.equipment.map((eq) => {
+                      const parts = eq.split(/\s+ou\s+/i).map((p) => p.trim());
+                      const isChoice = parts.length > 1;
+                      const selected = tempEquipSel.get(eq) ?? null;
+
+                      if (isChoice) {
+                        // "ou" item — exclusive radio-style choice
+                        return (
+                          <Box
+                            key={eq}
+                            sx={{
+                              borderRadius: "12px",
+                              border: selected
+                                ? "1px solid rgba(255,195,80,0.3)"
+                                : "1px solid rgba(255,255,255,0.07)",
+                              bgcolor: selected
+                                ? "rgba(255,195,80,0.05)"
+                                : "rgba(255,255,255,0.015)",
+                              p: 1.1,
+                              transition: "all 0.15s",
+                            }}
+                          >
+                            <Typography sx={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255,195,80,0.5)", mb: 0.75 }}>
+                              Escolha um
+                            </Typography>
+                            <Stack spacing={0.5}>
+                              {parts.map((opt) => {
+                                const active = selected === opt;
+                                return (
+                                  <Box
+                                    key={opt}
+                                    onClick={() =>
+                                      setTempEquipSel((prev) => {
+                                        const n = new Map(prev);
+                                        n.set(eq, active ? null : opt);
+                                        return n;
+                                      })
+                                    }
+                                    sx={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: 1.1,
+                                      px: 1.1,
+                                      py: 0.75,
+                                      borderRadius: "8px",
+                                      cursor: "pointer",
+                                      border: `1px solid ${active ? "rgba(255,195,80,0.45)" : "rgba(255,255,255,0.06)"}`,
+                                      bgcolor: active ? "rgba(255,195,80,0.12)" : "rgba(255,255,255,0.02)",
+                                      transition: "all 0.15s",
+                                      "&:hover": { border: `1px solid ${active ? "rgba(255,195,80,0.6)" : "rgba(255,255,255,0.12)"}` },
+                                    }}
+                                  >
+                                    {/* Radio dot */}
+                                    <Box
+                                      sx={{
+                                        width: 16, height: 16, borderRadius: "50%", flexShrink: 0,
+                                        border: `1.5px solid ${active ? "rgba(255,195,80,0.9)" : "rgba(255,255,255,0.2)"}`,
+                                        bgcolor: active ? "rgba(255,195,80,0.85)" : "transparent",
+                                        display: "grid", placeItems: "center",
+                                        transition: "all 0.15s",
+                                      }}
+                                    >
+                                      {active && <Box sx={{ width: 6, height: 6, borderRadius: "50%", bgcolor: "#1c1200" }} />}
+                                    </Box>
+                                    <Typography sx={{ flex: 1, fontSize: 13, lineHeight: 1.4, color: active ? "rgba(255,215,100,0.9)" : "rgba(255,255,255,0.42)", transition: "color 0.15s" }}>
+                                      {opt}
+                                    </Typography>
+                                    {findKit(opt, kits) && (
+                                      <IconButton
+                                        size="small"
+                                        onClick={(e) => { e.stopPropagation(); setInfoPackKey(normalize(opt)); setInfoAnchorEl(e.currentTarget); }}
+                                        sx={{ p: 0.3, color: "rgba(255,255,255,0.25)", "&:hover": { color: "rgba(255,215,100,0.7)" } }}
+                                      >
+                                        <InfoOutlinedIcon sx={{ fontSize: 14 }} />
+                                      </IconButton>
+                                    )}
+                                  </Box>
+                                );
+                              })}
+                            </Stack>
+                          </Box>
+                        );
+                      }
+
+                      // Simple item — checkbox
+                      const checked = selected !== null;
+                      const kitMatch = findKit(eq, kits);
+                      const isPack   = Boolean(kitMatch);
+                      return (
+                        <Box
+                          key={eq}
+                          onClick={() =>
+                            setTempEquipSel((prev) => {
+                              const n = new Map(prev);
+                              n.set(eq, checked ? null : eq);
+                              return n;
+                            })
+                          }
+                          sx={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 1.25,
+                            px: 1.25,
+                            py: 0.9,
+                            borderRadius: "10px",
+                            cursor: "pointer",
+                            border: `1px solid ${checked ? "rgba(120,85,255,0.35)" : "rgba(255,255,255,0.07)"}`,
+                            bgcolor: checked ? "rgba(120,85,255,0.1)" : "rgba(255,255,255,0.02)",
+                            transition: "all 0.15s",
+                            "&:hover": {
+                              border: `1px solid ${checked ? "rgba(120,85,255,0.5)" : "rgba(255,255,255,0.14)"}`,
+                              bgcolor: checked ? "rgba(120,85,255,0.14)" : "rgba(255,255,255,0.04)",
+                            },
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              width: 18, height: 18, borderRadius: "5px", flexShrink: 0,
+                              border: `1.5px solid ${checked ? "rgba(120,85,255,0.9)" : "rgba(255,255,255,0.22)"}`,
+                              bgcolor: checked ? "rgba(120,85,255,0.85)" : "transparent",
+                              display: "grid", placeItems: "center",
+                              transition: "all 0.15s",
+                            }}
+                          >
+                            {checked && <CheckRoundedIcon sx={{ fontSize: 12, color: "#fff" }} />}
+                          </Box>
+                          <Typography sx={{ flex: 1, fontSize: 13, lineHeight: 1.4, color: checked ? "rgba(255,255,255,0.88)" : "rgba(255,255,255,0.42)", transition: "color 0.15s" }}>
+                            {eq}
+                          </Typography>
+                          {isPack && kitMatch && (
+                            <IconButton
+                              size="small"
+                              onClick={(e) => { e.stopPropagation(); setInfoPackKey(normalize(kitMatch.name)); setInfoAnchorEl(e.currentTarget); }}
+                              sx={{ p: 0.3, color: "rgba(255,255,255,0.25)", "&:hover": { color: "rgba(180,150,255,0.8)" } }}
+                            >
+                              <InfoOutlinedIcon sx={{ fontSize: 15 }} />
+                            </IconButton>
+                          )}
+                        </Box>
+                      );
+                    })}
+                  </Stack>
+
+                  <Typography sx={{ fontSize: 11, color: "rgba(255,255,255,0.25)", mt: 0.9, pl: 0.25 }}>
+                    Itens selecionados serão adicionados ao inventário.
+                  </Typography>
+                </Box>
+              )}
+
+              {/* ── Features ── */}
+              <Box sx={{ px: 2.5, py: 1.5, borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                <Typography sx={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(180,150,255,0.55)", mb: 1.25 }}>
+                  Características únicas
+                </Typography>
+                <Stack spacing={1}>
+                  {detailClass.features.map((f) => (
+                    <Box key={f.name}>
+                      <Typography sx={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.88)" }}>{f.name}</Typography>
+                      <Typography sx={{ fontSize: 12.5, color: "rgba(255,255,255,0.45)", lineHeight: 1.55 }}>{f.description}</Typography>
+                    </Box>
+                  ))}
+                </Stack>
+              </Box>
+
+              {/* ── Actions ── */}
+              <Box sx={{ px: 2.5, py: 2 }}>
+                <Button
+                  fullWidth variant="contained"
+                  onClick={() => {
+                    setDraftClass(detailClass.id);
+                    setPendingEquipment(
+                      [...tempEquipSel.values()].filter((v): v is string => v !== null)
+                    );
+                    setDetailClass(null);
+                    setError(null);
+                  }}
+                  sx={{ py: 1.25, borderRadius: "10px", textTransform: "none", fontWeight: 700, fontSize: 14, background: "linear-gradient(135deg, #7B54FF 0%, #5B8FFF 100%)", boxShadow: "0 6px 24px rgba(100,70,230,0.35)" }}
+                >
+                  Jogar como {detailClass.name}
+                </Button>
+                <Button fullWidth onClick={() => setDetailClass(null)}
+                  sx={{ mt: 0.75, textTransform: "none", fontWeight: 600, fontSize: 13, color: "rgba(255,255,255,0.3)", "&:hover": { color: "rgba(255,255,255,0.6)", bgcolor: "rgba(255,255,255,0.04)" } }}>
+                  Cancelar
+                </Button>
+              </Box>
+
+            </DialogContent>
+          )}
+        </Dialog>
 
         {/* Race Detail Dialog */}
         <Dialog
@@ -665,6 +1078,58 @@ export default function CreateCharacterPage() {
             </DialogContent>
           )}
         </Dialog>
+
+        {/* Pack info popover */}
+        <Popover
+          open={Boolean(infoAnchorEl)}
+          anchorEl={infoAnchorEl}
+          onClose={() => { setInfoAnchorEl(null); setInfoPackKey(null); }}
+          anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+          transformOrigin={{ vertical: "top", horizontal: "left" }}
+          PaperProps={{
+            sx: {
+              bgcolor: "rgba(14,11,26,0.98)",
+              border: "1px solid rgba(255,255,255,0.1)",
+              borderRadius: "14px",
+              p: 1.75,
+              minWidth: 220,
+              boxShadow: "0 16px 48px rgba(0,0,0,0.7)",
+            },
+          }}
+        >
+          {infoPackKey && (() => {
+            const kit = kits.find((k) => normalize(k.name) === infoPackKey);
+            if (!kit) return null;
+            const items = kit.items;
+            const totalWeight = items.reduce((s, i) => s + i.weight * i.quantity, 0);
+            return (
+              <Stack spacing={0.5}>
+                <Typography sx={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(180,150,255,0.6)", mb: 0.5 }}>
+                  Conteúdo do pacote
+                </Typography>
+                {items.map(({ name, quantity, weight }) => (
+                  <Stack key={name} direction="row" alignItems="center" spacing={1} justifyContent="space-between">
+                    <Typography sx={{ fontSize: 13, color: "rgba(255,255,255,0.75)" }}>
+                      {quantity > 1 ? `${name} ×${quantity}` : name}
+                    </Typography>
+                    <Typography sx={{ fontSize: 11.5, color: "rgba(255,255,255,0.3)", flexShrink: 0 }}>
+                      {weight > 0 ? `${weight * quantity} kg` : "—"}
+                    </Typography>
+                  </Stack>
+                ))}
+                <Divider sx={{ opacity: 0.12, my: 0.5 }} />
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: "rgba(255,255,255,0.35)" }}>
+                    Peso total
+                  </Typography>
+                  <Typography sx={{ fontSize: 12, fontWeight: 800, color: "rgba(180,150,255,0.8)" }}>
+                    {totalWeight} kg
+                  </Typography>
+                </Stack>
+              </Stack>
+            );
+          })()}
+        </Popover>
 
         {/* Dialogs */}
         <SkillsDialog open={skillsOpen} onClose={() => setSkillsOpen(false)} selected={selectedSkills} toggle={toggleDraftSkill} max={5} />
