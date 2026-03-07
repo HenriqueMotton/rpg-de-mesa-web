@@ -53,7 +53,8 @@ export default function LoginPage() {
     try {
       const data = await login({ email, password });
       setAuthToken(data.access_token);
-      navigate(ROUTES.personagens);
+      const isMaster = useAuthStore.getState().isMaster;
+      navigate(isMaster ? ROUTES.config : ROUTES.personagens);
     } catch (err: any) {
       setError(
         err?.response?.data?.message ||

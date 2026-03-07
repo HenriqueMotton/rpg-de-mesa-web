@@ -93,6 +93,44 @@ export default function ClassePage() {
                   </Box>
                 </Box>
 
+                {/* Proficiências */}
+                {cls.proficiencies && (() => {
+                  const prof = cls.proficiencies;
+                  const groups = [
+                    { label: "Armaduras",            icon: "🛡️", items: prof.armor        as string[] },
+                    { label: "Armas",                 icon: "⚔️", items: prof.weapons      as string[] },
+                    { label: "Ferramentas",           icon: "🔧", items: prof.tools        as string[] },
+                    { label: "Testes de Resistência", icon: "🎯", items: prof.savingThrows as string[] },
+                  ].filter((g) => g.items.length > 0);
+                  if (groups.length === 0) return null;
+                  return (
+                    <Box>
+                      <Typography sx={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,255,255,0.28)", mb: 1 }}>
+                        Proficiências
+                      </Typography>
+                      <Stack spacing={1.25}>
+                        {groups.map((g) => (
+                          <Box key={g.label} sx={{ borderRadius: "12px", px: 1.75, py: 1.25, bgcolor: "rgba(120,85,255,0.06)", border: "1px solid rgba(120,85,255,0.14)" }}>
+                            <Stack direction="row" alignItems="center" spacing={0.6} sx={{ mb: 0.75 }}>
+                              <Typography sx={{ fontSize: 13, lineHeight: 1 }}>{g.icon}</Typography>
+                              <Typography sx={{ fontWeight: 800, fontSize: 12, letterSpacing: "0.07em", textTransform: "uppercase", color: "rgba(200,180,255,0.7)" }}>
+                                {g.label}
+                              </Typography>
+                            </Stack>
+                            <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.6 }}>
+                              {g.items.map((item) => (
+                                <Box key={item} sx={{ px: 1, py: 0.3, borderRadius: "7px", bgcolor: "rgba(120,85,255,0.12)", border: "1px solid rgba(120,85,255,0.25)" }}>
+                                  <Typography sx={{ fontSize: 12, fontWeight: 600, color: "rgba(200,180,255,0.9)" }}>{item}</Typography>
+                                </Box>
+                              ))}
+                            </Box>
+                          </Box>
+                        ))}
+                      </Stack>
+                    </Box>
+                  );
+                })()}
+
                 {/* Features */}
                 {cls.features?.length > 0 && (
                   <Box>

@@ -16,6 +16,8 @@ export type CharacterSpell = {
   prepared: boolean;
   isActive: boolean;
   activeUntil: string | null; // ISO date string from backend
+  isCustom: boolean;
+  isRacial: boolean;
 };
 
 export type SpellPayload = {
@@ -33,7 +35,23 @@ export type SpellPayload = {
   prepared?: boolean;
   isActive?: boolean;
   activeUntil?: string | null;
+  isCustom?: boolean;
+  isRacial?: boolean;
 };
+
+export type MasterSpellEntry = CharacterSpell & {
+  character: {
+    id: number;
+    name: string;
+    dndClass?: { name: string; icon: string } | null;
+    race?: { name: string } | null;
+  };
+};
+
+export async function listAllSpellsForMaster(): Promise<MasterSpellEntry[]> {
+  const { data } = await http.get<MasterSpellEntry[]>("/spells/master/all");
+  return data;
+}
 
 export async function getSpells(characterId: number | string): Promise<CharacterSpell[]> {
   const { data } = await http.get<CharacterSpell[]>(`/spells/character/${characterId}`);
@@ -58,4 +76,19 @@ export async function updateSpell(
 
 export async function deleteSpell(id: number): Promise<void> {
   await http.delete(`/spells/${id}`);
+}
+
+export async function bulkAddSpells(
+  characterId: number | string,
+  spells: SpellPayload[],
+): Promise<CharacterSpell[]> {
+  const { data } = await http.post<CharacterSpell[]>(`/spells/character/${characterId}/bulk`, { spells });
+  return data;
+}
+
+export async function bulkSetPrepared(
+  characterId: number | string,
+  preparedIds: number[],
+): Promise<void> {
+  await http.put(`/spells/character/${characterId}/prepare`, { preparedIds });
 }

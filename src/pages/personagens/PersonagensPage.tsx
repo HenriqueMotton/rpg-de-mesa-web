@@ -162,11 +162,11 @@ export default function PersonagensPage() {
         {/* ── Empty state ── */}
         {!loading && characters.length === 0 && (
           <Glass elevation={0}>
-            <Box sx={{ p: 3, textAlign: "center" }}>
+            <Box sx={{ p: 3, textAlign: "center", color: "white" }}>
               <Typography sx={{ fontSize: 32, mb: 1 }}>🎲</Typography>
               <Typography sx={{ fontWeight: 800, mb: 0.5 }}>Nenhum personagem ainda</Typography>
               <Typography sx={{ opacity: 0.45, fontSize: 13 }}>
-                Clique em <b style={{ opacity: 0.8 }}>Criar</b> para montar seu primeiro personagem.
+                Clique em <b style={{ opacity: 0.8 }}>'Criar'</b> para montar seu primeiro personagem.
               </Typography>
             </Box>
           </Glass>
@@ -190,6 +190,27 @@ export default function PersonagensPage() {
               >
                 <Box sx={{ p: 2.2 }}>
                   <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1.5}>
+
+                    {/* Avatar thumbnail */}
+                    <Box sx={{
+                      width: 52, height: 52, borderRadius: "14px", flexShrink: 0,
+                      overflow: "hidden", bgcolor: "rgba(255,255,255,0.05)",
+                      border: "1.5px solid rgba(255,255,255,0.08)",
+                      display: "grid", placeItems: "center",
+                    }}>
+                      {c.avatarUrl ? (
+                        <Box
+                          component="img"
+                          src={`${import.meta.env.VITE_API_BASE_URL}${c.avatarUrl}`}
+                          alt={c.name}
+                          sx={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                        />
+                      ) : (
+                        <Typography sx={{ fontSize: 24, lineHeight: 1 }}>
+                          {c.dndClass?.icon ?? "🧙"}
+                        </Typography>
+                      )}
+                    </Box>
 
                     {/* Left */}
                     <Box sx={{ minWidth: 0, flex: 1 }}>

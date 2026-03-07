@@ -20,6 +20,13 @@ export type ClassSpellEntry = {
   unlockLevel: number;
 };
 
+export type ClassProficiencies = {
+  armor: string[];
+  weapons: string[];
+  tools: string[];
+  savingThrows: string[];
+};
+
 export type DndClass = {
   id: number;
   name: string;
@@ -30,6 +37,7 @@ export type DndClass = {
   equipment: string[];
   features: ClassFeature[];
   classSpells: ClassSpellEntry[];
+  proficiencies?: ClassProficiencies;
 };
 
 export async function listClasses(): Promise<DndClass[]> {

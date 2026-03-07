@@ -5,10 +5,13 @@ import {
   Button,
   CircularProgress,
   Container,
+  Dialog,
+  IconButton,
   InputAdornment,
+  Popover,
   Stack,
   TextField,
-
+  Tooltip,
   Typography,
 } from "@mui/material";
 
@@ -19,6 +22,8 @@ import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import RemoveRoundedIcon from "@mui/icons-material/RemoveRounded";
 import StarRoundedIcon from "@mui/icons-material/StarRounded";
+import CameraAltRoundedIcon from "@mui/icons-material/CameraAltRounded";
+import DeleteRoundedIcon from "@mui/icons-material/DeleteRounded";
 
 import confetti from "canvas-confetti";
 import { useNavigate, useParams } from "react-router-dom";
@@ -38,10 +43,13 @@ import PendingChangesFab from "../../components/ui/PendingChangesFab";
 import {
   getCharacter,
   saveCharacter,
+  uploadCharacterAvatar,
+  removeCharacterAvatar,
   type Character,
 } from "../../modules/characters/characters.api";
 import { getInventory } from "../../modules/inventory/inventory.api";
 import SpellQuickPanel from "./SpellQuickPanel";
+import InitiativeWidget from "./InitiativeWidget";
 import { useCharactersStore } from "../../modules/characters/characters.store";
 
 
@@ -72,6 +80,12 @@ const ATTR_COLOR: Record<AttrKey, { accent: string; glow: string; bg: string; bo
 };
 
 type HpAction = "damage" | "heal" | "increaseMaxHealth";
+
+const HIT_DICE_BY_CLASS: Record<string, number> = {
+  "Bárbaro": 12, "Bardo": 8, "Bruxo": 8, "Clérico": 8, "Druida": 8,
+  "Feiticeiro": 6, "Guerreiro": 10, "Ladino": 8, "Mago": 6,
+  "Monge": 8, "Paladino": 10, "Patrulheiro": 10,
+};
 
 const RACE_ICON: Record<string, string> = {
   "Anão": "⛏️", "Elfo": "🌿", "Meio-Elfo": "🌟", "Humano": "🏛️",
@@ -105,6 +119,14 @@ function fireLevelUpConfetti() {
   setTimeout(() => {
     confetti({ ...base, particleCount: 50, angle: 90, spread: 60, origin: { x: 0.5, y: 0.3 } });
   }, 420);
+}
+
+function getProficiencyBonus(level: number): number {
+  if (level >= 17) return 6;
+  if (level >= 13) return 5;
+  if (level >= 9)  return 4;
+  if (level >= 5)  return 3;
+  return 2;
 }
 
 function getXpProgress(xp: number) {
@@ -288,6 +310,10 @@ export default function ViewCharacterPage() {
   const [xpAmount, setXpAmount] = useState("");
 
   const [fabVisible, setFabVisible] = useState(false);
+  const [avatarUploading,  setAvatarUploading]  = useState(false);
+  const [avatarOpen,       setAvatarOpen]       = useState(false);
+  const [profAnchor,       setProfAnchor]       = useState<HTMLElement | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let alive = true;
@@ -401,6 +427,38 @@ export default function ViewCharacterPage() {
 
   function handleDiscard() { setError(null); setDraft(original); }
 
+  async function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !draft?.id) return;
+    setAvatarUploading(true);
+    try {
+      const updated = await uploadCharacterAvatar(draft.id, file);
+      setDraft((prev) => prev ? { ...prev, avatarUrl: (updated as any).avatarUrl } : prev);
+      setOriginal((prev) => prev ? { ...prev, avatarUrl: (updated as any).avatarUrl } : prev);
+    } catch {
+      setError("Não foi possível enviar a imagem.");
+    } finally {
+      setAvatarUploading(false);
+      if (avatarInputRef.current) avatarInputRef.current.value = "";
+    }
+  }
+
+
+  async function handleAvatarRemove(e?: React.MouseEvent) {
+    e?.stopPropagation();
+    if (!draft?.id) return;
+    setAvatarUploading(true);
+    try {
+      await removeCharacterAvatar(draft.id);
+      setDraft((prev) => prev ? { ...prev, avatarUrl: null } : prev);
+      setOriginal((prev) => prev ? { ...prev, avatarUrl: null } : prev);
+    } catch {
+      setError("Não foi possível remover a imagem.");
+    } finally {
+      setAvatarUploading(false);
+    }
+  }
+
   function openGold(action: "add" | "remove") {
     setError(null); setGoldAction(action); setGoldAmount(""); setGoldOpen(true);
   }
@@ -444,24 +502,243 @@ export default function ViewCharacterPage() {
 
         {/* HEADER */}
         <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 3.5 }}>
-          <Box>
-            <PageLabel>{loading ? " " : "Ficha do Personagem"}</PageLabel>
-            <PageTitle>{loading ? "Carregando…" : (draft?.name ?? "Personagem")}</PageTitle>
-            {!loading && ((draft as any)?.dndClass || (draft as any)?.race) && (
-              <Typography sx={{ fontSize: 12.5, color: "rgba(255,255,255,0.28)", mt: 0.25, letterSpacing: "0.01em" }}>
-                {(draft as any).dndClass && `${(draft as any).dndClass.icon} ${(draft as any).dndClass.name}`}
-                {(draft as any).dndClass && (draft as any).race && " · "}
-                {(draft as any).race && `${RACE_ICON[(draft as any).race.name] ?? "🎲"} ${(draft as any).race.name}${(draft as any).subRace ? ` · ${(draft as any).subRace.name}` : ""}`}
-              </Typography>
-            )}
-            {(loading || saving) && <LoadingBar />}
-          </Box>
-          <BackButton
-            onClick={() => navigate(ROUTES.personagens)}
-            startIcon={<ArrowBackRoundedIcon sx={{ fontSize: "15px !important" }} />}
-          >
-            Voltar
-          </BackButton>
+          <Stack direction="row" alignItems="flex-start" spacing={1.5}>
+            {/* Avatar thumbnail — click opens modal */}
+            <Box sx={{ position: "relative", flexShrink: 0 }}>
+              <Box
+                onClick={() => !avatarUploading && setAvatarOpen(true)}
+                sx={{
+                  width: 62, height: 62, borderRadius: "18px",
+                  overflow: "hidden", cursor: "pointer", flexShrink: 0,
+                  border: "1.5px solid rgba(255,255,255,0.1)",
+                  bgcolor: "rgba(255,255,255,0.05)",
+                  display: "grid", placeItems: "center",
+                  transition: "border-color .15s",
+                  "&:hover": { borderColor: "rgba(160,130,255,0.45)" },
+                  "&:hover .cam-overlay": { opacity: 1 },
+                }}
+              >
+                {(draft as any)?.avatarUrl ? (
+                  <Box
+                    component="img"
+                    src={`${import.meta.env.VITE_API_BASE_URL}${(draft as any).avatarUrl}`}
+                    alt="avatar"
+                    sx={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                  />
+                ) : (
+                  <Typography sx={{ fontSize: 28, lineHeight: 1 }}>
+                    {(draft as any)?.dndClass?.icon ?? "🧙"}
+                  </Typography>
+                )}
+                <Box className="cam-overlay" sx={{
+                  position: "absolute", inset: 0,
+                  display: "grid", placeItems: "center",
+                  bgcolor: "rgba(0,0,0,0.45)", opacity: 0, transition: "opacity .15s",
+                  borderRadius: "18px",
+                }}>
+                  {avatarUploading
+                    ? <CircularProgress size={18} sx={{ color: "rgba(255,255,255,0.7)" }} />
+                    : <CameraAltRoundedIcon sx={{ fontSize: 20, color: "rgba(255,255,255,0.85)" }} />}
+                </Box>
+              </Box>
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/jpeg,image/jpg,image/png,image/webp,image/gif"
+                style={{ display: "none" }}
+                onChange={handleAvatarChange}
+              />
+            </Box>
+
+            {/* Avatar expanded modal */}
+            <Dialog
+              open={avatarOpen}
+              onClose={() => setAvatarOpen(false)}
+              PaperProps={{
+                sx: {
+                  bgcolor: "transparent", boxShadow: "none",
+                  m: 2, maxWidth: 340, width: "100%",
+                },
+              }}
+              slotProps={{ backdrop: { sx: { backdropFilter: "blur(12px)", bgcolor: "rgba(0,0,0,0.75)" } } }}
+            >
+              <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                {/* Image / placeholder */}
+                <Box sx={{
+                  width: "100%", aspectRatio: "1/1", borderRadius: "24px",
+                  overflow: "hidden", bgcolor: "rgba(255,255,255,0.05)",
+                  border: "1.5px solid rgba(255,255,255,0.1)",
+                  display: "grid", placeItems: "center",
+                }}>
+                  {(draft as any)?.avatarUrl ? (
+                    <Box
+                      component="img"
+                      src={`${import.meta.env.VITE_API_BASE_URL}${(draft as any).avatarUrl}`}
+                      alt="avatar"
+                      sx={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                    />
+                  ) : (
+                    <Typography sx={{ fontSize: 72, lineHeight: 1 }}>
+                      {(draft as any)?.dndClass?.icon ?? "🧙"}
+                    </Typography>
+                  )}
+                </Box>
+
+                {/* Actions */}
+                <Stack direction="row" spacing={1.5} justifyContent="center">
+                  {/* Change */}
+                  <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 0.5 }}>
+                    <IconButton
+                      onClick={() => { setAvatarOpen(false); setTimeout(() => avatarInputRef.current?.click(), 100); }}
+                      disabled={avatarUploading}
+                      sx={{
+                        width: 52, height: 52, borderRadius: "16px",
+                        bgcolor: "rgba(120,85,255,0.15)", border: "1px solid rgba(120,85,255,0.3)",
+                        color: "rgba(180,150,255,0.9)",
+                        "&:hover": { bgcolor: "rgba(120,85,255,0.25)" },
+                      }}
+                    >
+                      <CameraAltRoundedIcon sx={{ fontSize: 22 }} />
+                    </IconButton>
+                    <Typography sx={{ fontSize: 11, color: "rgba(255,255,255,0.4)", fontWeight: 600 }}>Alterar</Typography>
+                  </Box>
+
+                  {/* Delete — only if has avatar */}
+                  {(draft as any)?.avatarUrl && (
+                    <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 0.5 }}>
+                      <IconButton
+                        onClick={async (e) => { setAvatarOpen(false); await handleAvatarRemove(e); }}
+                        disabled={avatarUploading}
+                        sx={{
+                          width: 52, height: 52, borderRadius: "16px",
+                          bgcolor: "rgba(220,60,60,0.1)", border: "1px solid rgba(220,60,60,0.25)",
+                          color: "rgba(255,100,100,0.85)",
+                          "&:hover": { bgcolor: "rgba(220,60,60,0.2)" },
+                        }}
+                      >
+                        <DeleteRoundedIcon sx={{ fontSize: 22 }} />
+                      </IconButton>
+                      <Typography sx={{ fontSize: 11, color: "rgba(255,255,255,0.4)", fontWeight: 600 }}>Excluir</Typography>
+                    </Box>
+                  )}
+
+                  {/* Close */}
+                  <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 0.5 }}>
+                    <IconButton
+                      onClick={() => setAvatarOpen(false)}
+                      sx={{
+                        width: 52, height: 52, borderRadius: "16px",
+                        bgcolor: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)",
+                        color: "rgba(255,255,255,0.5)",
+                        "&:hover": { bgcolor: "rgba(255,255,255,0.1)" },
+                      }}
+                    >
+                      <CloseRoundedIcon sx={{ fontSize: 22 }} />
+                    </IconButton>
+                    <Typography sx={{ fontSize: 11, color: "rgba(255,255,255,0.4)", fontWeight: 600 }}>Fechar</Typography>
+                  </Box>
+                </Stack>
+              </Box>
+            </Dialog>
+
+            {/* Name / class / race */}
+            <Box>
+              <PageLabel>{loading ? " " : "Ficha do Personagem"}</PageLabel>
+              <PageTitle>{loading ? "Carregando…" : (draft?.name ?? "Personagem")}</PageTitle>
+              {!loading && ((draft as any)?.dndClass || (draft as any)?.race) && (
+                <Typography sx={{ fontSize: 12.5, color: "rgba(255,255,255,0.28)", mt: 0.25, letterSpacing: "0.01em" }}>
+                  {(draft as any).dndClass && `${(draft as any).dndClass.icon} ${(draft as any).dndClass.name}`}
+                  {(draft as any).dndClass && (draft as any).race && " · "}
+                  {(draft as any).race && `${RACE_ICON[(draft as any).race.name] ?? "🎲"} ${(draft as any).race.name}${(draft as any).subRace ? ` · ${(draft as any).subRace.name}` : ""}`}
+                </Typography>
+              )}
+              {(loading || saving) && <LoadingBar />}
+            </Box>
+          </Stack>
+
+          <Stack alignItems="flex-end" spacing={0.75}>
+            <BackButton
+              onClick={() => navigate(ROUTES.personagens)}
+              startIcon={<ArrowBackRoundedIcon sx={{ fontSize: "15px !important" }} />}
+            >
+              Voltar
+            </BackButton>
+
+            {!loading && draft && (() => {
+              const nivel = (draft as any).nivel ?? 1;
+              const bonus = getProficiencyBonus(nivel);
+              return (
+                <>
+                  <Box
+                    onClick={(e) => setProfAnchor(e.currentTarget)}
+                    sx={{
+                      display: "inline-flex", alignItems: "center", gap: 0.6,
+                      px: 1, py: 0.35, borderRadius: "8px", cursor: "pointer",
+                      bgcolor: "rgba(60,140,255,0.1)", border: "1px solid rgba(60,140,255,0.22)",
+                      transition: "all .15s",
+                      "&:hover": { bgcolor: "rgba(60,140,255,0.18)", borderColor: "rgba(60,140,255,0.38)" },
+                    }}
+                  >
+                    <Typography sx={{ fontSize: 11, fontWeight: 800, color: "rgba(120,185,255,0.9)" }}>
+                      Prof.
+                    </Typography>
+                    <Typography sx={{ fontSize: 12, fontWeight: 900, color: "rgba(140,200,255,0.95)" }}>
+                      +{bonus}
+                    </Typography>
+                  </Box>
+
+                  <Popover
+                    open={Boolean(profAnchor)}
+                    anchorEl={profAnchor}
+                    onClose={() => setProfAnchor(null)}
+                    anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+                    transformOrigin={{ vertical: "top", horizontal: "right" }}
+                    PaperProps={{
+                      sx: {
+                        mt: 0.75, maxWidth: 260, borderRadius: "14px",
+                        bgcolor: "rgba(14,18,30,0.97)", border: "1px solid rgba(60,140,255,0.2)",
+                        backdropFilter: "blur(16px)", boxShadow: "0 16px 48px rgba(0,0,0,0.6)",
+                        p: 1.75,
+                      },
+                    }}
+                  >
+                    <Typography sx={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(120,185,255,0.6)", mb: 0.6 }}>
+                      Bônus de Proficiência
+                    </Typography>
+                    <Typography sx={{ fontSize: 22, fontWeight: 900, color: "rgba(140,200,255,0.95)", lineHeight: 1, mb: 1 }}>
+                      +{bonus}
+                    </Typography>
+                    <Typography sx={{ fontSize: 12.5, color: "rgba(255,255,255,0.5)", lineHeight: 1.6, mb: 1.25 }}>
+                      Adicionado a ataques, testes e salvaguardas em que você tem proficiência. Aumenta conforme o nível.
+                    </Typography>
+                    <Stack spacing={0.4}>
+                      {([
+                        [1,  4,  2],
+                        [5,  8,  3],
+                        [9,  12, 4],
+                        [13, 16, 5],
+                        [17, 20, 6],
+                      ] as [number, number, number][]).map(([min, max, val]) => {
+                        const active = nivel >= min && nivel <= max;
+                        return (
+                          <Stack key={min} direction="row" alignItems="center" justifyContent="space-between"
+                            sx={{ px: 1, py: 0.35, borderRadius: "8px", bgcolor: active ? "rgba(60,140,255,0.12)" : "transparent", border: `1px solid ${active ? "rgba(60,140,255,0.28)" : "transparent"}` }}
+                          >
+                            <Typography sx={{ fontSize: 11.5, color: active ? "rgba(180,215,255,0.9)" : "rgba(255,255,255,0.28)", fontWeight: active ? 700 : 400 }}>
+                              Nível {min}–{max}
+                            </Typography>
+                            <Typography sx={{ fontSize: 12, fontWeight: 800, color: active ? "rgba(140,200,255,0.95)" : "rgba(255,255,255,0.2)" }}>
+                              +{val}
+                            </Typography>
+                          </Stack>
+                        );
+                      })}
+                    </Stack>
+                  </Popover>
+                </>
+              );
+            })()}
+          </Stack>
         </Stack>
 
         {error && (
@@ -534,7 +811,7 @@ export default function ViewCharacterPage() {
           );
         })()}
 
-        <Glass elevation={0}>
+<Glass elevation={0}>
           <Box sx={{ p: { xs: 2, sm: 2.25 } }}>
             {loading ? (
               <Box sx={{ display: "grid", placeItems: "center", py: 10 }}>
@@ -561,11 +838,29 @@ export default function ViewCharacterPage() {
                         {draft.health}
                         <HpValueSub component="span">{" "}/ {draft.maxHealth} HP</HpValueSub>
                       </HpValueText>
-                      <Box sx={{ px: 1.2, py: 0.4, borderRadius: "8px", bgcolor: "rgba(0,0,0,0.28)", border: `1px solid ${hpUi.border}` }}>
-                        <Typography sx={{ fontSize: 11, fontWeight: 800, color: hpUi.textColor, letterSpacing: "0.04em" }}>
-                          {hpUi.label} · {Math.round(hpPct * 100)}%
-                        </Typography>
-                      </Box>
+                      <Stack direction="row" spacing={0.6} alignItems="center">
+                        {/* Hit dice badge */}
+                        {(() => {
+                          const dieSize = HIT_DICE_BY_CLASS[(draft as any)?.dndClass?.name ?? ""] ?? 0;
+                          if (!dieSize) return null;
+                          const available = (draft.nivel ?? 1) - ((draft as any).hitDiceUsed ?? 0);
+                          return (
+                            <Tooltip title="Dados de vida" placement="top" arrow>
+                              <Box sx={{ px: 1.1, py: 0.4, borderRadius: "8px", bgcolor: "rgba(0,0,0,0.28)", border: "1px solid rgba(255,255,255,0.1)", cursor: "default" }}>
+                                <Typography sx={{ fontSize: 11, fontWeight: 800, color: available > 0 ? "rgba(255,255,255,0.6)" : "rgba(255,100,100,0.7)", letterSpacing: "0.03em", lineHeight: 1 }}>
+                                  d{dieSize} · {available}
+                                </Typography>
+                              </Box>
+                            </Tooltip>
+                          );
+                        })()}
+                        {/* HP status badge */}
+                        <Box sx={{ px: 1.2, py: 0.4, borderRadius: "8px", bgcolor: "rgba(0,0,0,0.28)", border: `1px solid ${hpUi.border}` }}>
+                          <Typography sx={{ fontSize: 11, fontWeight: 800, color: hpUi.textColor, letterSpacing: "0.04em" }}>
+                            {hpUi.label} · {Math.round(hpPct * 100)}%
+                          </Typography>
+                        </Box>
+                      </Stack>
                     </HpBarOverlay>
                   </Box>
 
@@ -584,6 +879,7 @@ export default function ViewCharacterPage() {
                     ))}
                   </Stack>
                 </Box>
+
 
                 {/* ── GOLD ───────────────────────────────────────── */}
                 <GoldPill
@@ -728,6 +1024,7 @@ export default function ViewCharacterPage() {
                     </Stack>
                   )}
                 </Box>
+
 
               </Stack>
             )}
@@ -952,6 +1249,8 @@ export default function ViewCharacterPage() {
       {id && ((draft as any)?.dndClass?.classSpells?.length ?? 0) > 0 && (
         <SpellQuickPanel characterId={id} />
       )}
+
+      <InitiativeWidget />
 
     </Page>
   );

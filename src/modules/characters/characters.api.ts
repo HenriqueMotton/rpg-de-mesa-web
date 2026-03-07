@@ -8,6 +8,7 @@ export type CharacterListItem = {
   maxHealth: number;
   nivel: number;
   xp: number;
+  avatarUrl?: string | null;
   race?: { id: number; name: string } | null;
   subRace?: { id: number; name: string } | null;
   dndClass?: { id: number; name: string; icon: string } | null;
@@ -43,10 +44,16 @@ export type CreateCharacterPayload = {
   raceId?: number;
   subRaceId?: number;
   classId?: number;
+  height?: number;
 };
 
 export async function listCharacters() {
   const { data } = await http.get<CharacterListItem[]>("/characters");
+  return data;
+}
+
+export async function listAllCharacters(): Promise<{ id: number; name: string; dndClass?: { name: string; icon: string } }[]> {
+  const { data } = await http.get("/characters/master/all");
   return data;
 }
 
@@ -85,6 +92,51 @@ export async function saveCharacter(character: any) {
 
 export async function createCharacter(payload: CreateCharacterPayload) {
   const { data } = await http.post("/characters", payload);
+  return data;
+}
+
+export async function restCharacter(
+  characterId: number | string,
+  restType: "long" | "short",
+  hitDiceSpent = 0,
+): Promise<Character> {
+  const { data } = await http.post<Character>(`/characters/${characterId}/rest`, { restType, hitDiceSpent });
+  return data;
+}
+
+export type SpendHitDiceResult = {
+  roll: number;
+  conMod: number;
+  healing: number;
+  newHealth: number;
+  hitDiceUsed: number;
+  maxDice: number;
+  dieSize: number;
+};
+
+export async function spendHitDice(characterId: number | string): Promise<SpendHitDiceResult> {
+  const { data } = await http.post<SpendHitDiceResult>(`/characters/${characterId}/spend-hit-dice`);
+  return data;
+}
+
+export async function updateSpellSlots(
+  characterId: number | string,
+  slots: Record<string, number>,
+): Promise<void> {
+  await http.put(`/characters/${characterId}`, { spellSlots: slots });
+}
+
+export async function removeCharacterAvatar(id: number | string): Promise<Character> {
+  const { data } = await http.delete<Character>(`/characters/${id}/avatar`);
+  return data;
+}
+
+export async function uploadCharacterAvatar(id: number | string, file: File): Promise<Character> {
+  const form = new FormData();
+  form.append("file", file);
+  const { data } = await http.post<Character>(`/characters/${id}/avatar`, form, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
   return data;
 }
 

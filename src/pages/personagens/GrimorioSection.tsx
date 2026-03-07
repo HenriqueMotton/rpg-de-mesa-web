@@ -35,9 +35,20 @@ import {
   addSpell,
   updateSpell,
   deleteSpell,
+  bulkAddSpells,
+  bulkSetPrepared,
   type CharacterSpell,
 } from "../../modules/spells/spells.api";
 import type { ClassSpellEntry } from "../../modules/classes/classes.api";
+import { ALL_DND_SPELLS, type DndSpellData } from "../../modules/spells/dnd-spells.data";
+import {
+  getClassProgression,
+  expectedSpellCounts,
+  maxPrepared as calcMaxPrepared,
+  attrMod,
+} from "../../modules/spells/spell-progression.data";
+import SpellPickerModal, { type SpellPickerTarget } from "./SpellPickerModal";
+import SpellPreparationModal, { type PrepareTarget } from "./SpellPreparationModal";
 
 const SCHOOLS = [
   { value: "Abjuração", icon: "🛡️" },
@@ -137,10 +148,78 @@ const checkboxSx = {
   "&.Mui-checked": { color: "rgba(140,100,255,0.9)" },
 };
 
+// ─── Racial Spells Catalog ────────────────────────────────────────────────────
+
+type RacialSpellEntry = {
+  name: string;
+  level: number;
+  school: string;
+  castingTime: string;
+  range: string;
+  duration: string;
+  componentV: boolean;
+  componentS: boolean;
+  componentM: boolean;
+  materialComponent?: string;
+  description: string;
+  unlockLevel: number;
+};
+
+const RACIAL_SPELLS: Record<string, RacialSpellEntry[]> = {
+  "Elfo Negro (Drow)": [
+    {
+      name: "Luz Dançante",
+      level: 0, school: "Evocação", castingTime: "1 ação", range: "36 metros",
+      duration: "Concentração, até 1 minuto",
+      componentV: true, componentS: true, componentM: true,
+      materialComponent: "fósforo ou vaga-lume",
+      description: "Você cria até quatro luzes flutuantes do tamanho de tochas. Pode combiná-las em forma humanoide Média. Cada luz emite luz fraca em 3 m. Truque — uso ilimitado.",
+      unlockLevel: 1,
+    },
+    {
+      name: "Fogo das Fadas",
+      level: 1, school: "Evocação", castingTime: "1 ação", range: "18 metros",
+      duration: "Concentração, até 1 minuto",
+      componentV: true, componentS: false, componentM: false,
+      description: "Criaturas/objetos num cubo de 6 m são delineados por luz (TR Destreza). Afetados não têm invisibilidade; ataques contra eles têm vantagem. 1× por descanso longo.",
+      unlockLevel: 3,
+    },
+    {
+      name: "Escuridão",
+      level: 2, school: "Evocação", castingTime: "1 ação", range: "18 metros",
+      duration: "Concentração, até 10 minutos",
+      componentV: true, componentS: false, componentM: true,
+      materialComponent: "pele de morcego e uma gota de pez",
+      description: "Escuridão mágica em esfera de 4,5 m de raio. Visão no escuro não funciona; luz não mágica não ilumina. 1× por descanso longo.",
+      unlockLevel: 5,
+    },
+  ],
+  "Gnomo da Floresta": [
+    {
+      name: "Ilusão Menor",
+      level: 0, school: "Ilusão", castingTime: "1 ação", range: "9 metros",
+      duration: "1 minuto",
+      componentV: false, componentS: true, componentM: true,
+      materialComponent: "um pouco de lã de carneiro",
+      description: "Cria um som ou imagem de objeto (até cubo 1,5 m) por 1 minuto. Sem efeitos sensoriais além do visual/sonoro. Truque — uso ilimitado.",
+      unlockLevel: 1,
+    },
+  ],
+};
+
+function getRacialSpells(raceName: string, subRaceName: string): RacialSpellEntry[] {
+  return RACIAL_SPELLS[subRaceName] ?? RACIAL_SPELLS[raceName] ?? [];
+}
+
 interface Props {
   characterId: number | string;
   classSpells?: ClassSpellEntry[];
   characterNivel?: number;
+  raceName?: string;
+  subRaceName?: string;
+  className?: string;
+  attributes?: Record<string, number>;
+  isMaster?: boolean;
 }
 
 type LevelFilter = "todos" | "truques" | "1-3" | "4-6" | "7-9";
@@ -174,9 +253,9 @@ function groupByLevel(spells: CharacterSpell[]) {
     .map(([level, list]) => ({ level: Number(level), list }));
 }
 
-type View = "grimorio" | "catalogo";
+type View = "grimorio" | "catalogo" | "racial";
 
-export default function GrimorioSection({ characterId, classSpells = [], characterNivel = 1 }: Props) {
+export default function GrimorioSection({ characterId, classSpells = [], characterNivel = 1, raceName = "", subRaceName = "", className = "", attributes = {}, isMaster = false }: Props) {
   const [view, setView] = useState<View>("grimorio");
   const [spells, setSpells] = useState<CharacterSpell[]>([]);
   const [loading, setLoading] = useState(true);
@@ -184,7 +263,9 @@ export default function GrimorioSection({ characterId, classSpells = [], charact
   const [saving, setSaving] = useState(false);
   const [levelFilter, setLevelFilter] = useState<LevelFilter>("todos");
   const [addingCatalog, setAddingCatalog] = useState<string | null>(null);
+  const [addingRacial, setAddingRacial]   = useState<string | null>(null);
   const [detailCatalogSpell, setDetailCatalogSpell] = useState<ClassSpellEntry | null>(null);
+  const [detailRacialSpell, setDetailRacialSpell]   = useState<RacialSpellEntry | null>(null);
 
   const [addOpen, setAddOpen] = useState(false);
   const [editSpell, setEditSpell] = useState<CharacterSpell | null>(null);
@@ -192,6 +273,12 @@ export default function GrimorioSection({ characterId, classSpells = [], charact
 
   const [form, setForm] = useState(EMPTY_FORM);
   const [formError, setFormError] = useState<string | null>(null);
+
+  // ── Spell learning system ────────────────────────────────────────────────
+  const [pickerOpen, setPickerOpen]   = useState(false);
+  const [pickerSaving, setPickerSaving] = useState(false);
+  const [prepOpen, setPrepOpen]       = useState(false);
+  const [prepSaving, setPrepSaving]   = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -252,6 +339,7 @@ export default function GrimorioSection({ characterId, classSpells = [], charact
       materialComponent: form.materialComponent.trim() || undefined,
       description: form.description.trim() || undefined,
       prepared: form.prepared,
+      isCustom: true,
     };
   }
 
@@ -502,6 +590,7 @@ export default function GrimorioSection({ characterId, classSpells = [], charact
         materialComponent: entry.materialComponent,
         description: entry.description,
         prepared: false,
+        isCustom: false,
       });
       await load();
     } catch {
@@ -511,15 +600,154 @@ export default function GrimorioSection({ characterId, classSpells = [], charact
     }
   }
 
+  async function handleAddRacialSpell(entry: RacialSpellEntry) {
+    const key = entry.name;
+    setAddingRacial(key);
+    try {
+      await addSpell(characterId, {
+        name: entry.name,
+        level: entry.level,
+        school: entry.school,
+        castingTime: entry.castingTime,
+        range: entry.range,
+        duration: entry.duration,
+        componentV: entry.componentV,
+        componentS: entry.componentS,
+        componentM: entry.componentM,
+        materialComponent: entry.materialComponent,
+        description: entry.description,
+        prepared: false,
+        isCustom: false,
+        isRacial: true,
+      });
+      await load();
+    } catch {
+      // silently fail
+    } finally {
+      setAddingRacial(null);
+    }
+  }
+
   const filteredSpells = spells.filter((s) => matchesFilter(s, levelFilter));
   const groups = groupByLevel(filteredSpells);
 
   const learnedNames = new Set(spells.map((s) => s.name));
   const availableCatalog = classSpells.filter((s) => s.unlockLevel <= characterNivel);
+
+  // ── Spell learning detection ─────────────────────────────────────────────
+  const progression = getClassProgression(className);
+  const expected    = progression ? expectedSpellCounts(progression, characterNivel) : null;
+
+  const knownSpells    = spells.filter((s) => !s.isRacial && !s.isCustom);
+  const ownedCantrips  = knownSpells.filter((s) => s.level === 0).length;
+  const ownedLeveled   = knownSpells.filter((s) => s.level > 0).length;
+
+  const cantripDeficit = expected ? Math.max(0, expected.cantrips - ownedCantrips) : 0;
+  const leveledDeficit = expected && progression?.system === 'known' ? Math.max(0, expected.leveled - ownedLeveled) : 0;
+  const needsSpellPick = cantripDeficit > 0 || leveledDeficit > 0;
+
+  // For prepared/grimoire: max prepared count
+  const prepAttrMap: Record<string, string> = { int: 'inteligencia', sab: 'sabedoria', car: 'carisma' };
+  const prepAttrValue = progression?.prepAttr
+    ? (attributes[prepAttrMap[progression.prepAttr]] ?? 10)
+    : 10;
+  const maxPrepCount = progression && (progression.system === 'prepared' || progression.system === 'grimoire')
+    ? calcMaxPrepared(progression, characterNivel, prepAttrValue)
+    : 0;
+
+  const currentPrepared = spells.filter((s) => s.prepared && !s.isRacial && !s.isCustom);
+
+  // Available class spells for the preparation modal
+  const classSpellsForPrep: DndSpellData[] = expected
+    ? ALL_DND_SPELLS.filter(
+        (s) => s.classes.includes(className) && (s.level === 0 || s.level <= expected.maxSpellLevel)
+      )
+    : [];
+
+  // Build picker target
+  const pickerTarget: SpellPickerTarget | null = needsSpellPick && progression
+    ? {
+        cantripsToPick: cantripDeficit,
+        leveledToPick:  leveledDeficit,
+        maxSpellLevel:  expected?.maxSpellLevel ?? 0,
+        alreadyKnownNames: learnedNames,
+        className,
+        title: ownedCantrips === 0 && ownedLeveled === 0
+          ? "Escolher Magias Iniciais"
+          : "Novas Magias Disponíveis",
+      }
+    : null;
+
+  // Build preparation target
+  const prepTarget: PrepareTarget | null = progression && (progression.system === 'prepared' || progression.system === 'grimoire')
+    ? {
+        className,
+        system: progression.system,
+        maxPrepared: maxPrepCount,
+        maxSpellLevel: expected?.maxSpellLevel ?? 0,
+        availableSpells: classSpellsForPrep,
+        currentPrepared,
+      }
+    : null;
+
+  async function handlePickerConfirm(selected: DndSpellData[]) {
+    setPickerSaving(true);
+    try {
+      const payloads = selected.map((s) => ({
+        name: s.name, level: s.level, school: s.school,
+        castingTime: s.castingTime, range: s.range, duration: s.duration,
+        componentV: s.componentV, componentS: s.componentS, componentM: s.componentM,
+        materialComponent: s.materialComponent, description: s.description,
+        prepared: true, isCustom: false,
+      }));
+      await bulkAddSpells(characterId, payloads);
+      await load();
+      setPickerOpen(false);
+    } finally {
+      setPickerSaving(false);
+    }
+  }
+
+  async function handlePrepConfirm(preparedNames: string[]) {
+    setPrepSaving(true);
+    try {
+      // Add any new spells from catalog that aren't in grimoire yet
+      const preparedSet = new Set(preparedNames);
+      const existingNames = new Set(spells.map((s) => s.name));
+      const toAdd = classSpellsForPrep.filter((s) => preparedSet.has(s.name) && !existingNames.has(s.name));
+      if (toAdd.length > 0) {
+        const payloads = toAdd.map((s) => ({
+          name: s.name, level: s.level, school: s.school,
+          castingTime: s.castingTime, range: s.range, duration: s.duration,
+          componentV: s.componentV, componentS: s.componentS, componentM: s.componentM,
+          materialComponent: s.materialComponent, description: s.description,
+          prepared: true, isCustom: false,
+        }));
+        await bulkAddSpells(characterId, payloads);
+      }
+      // Reload to get updated IDs then bulk-set prepared
+      const freshSpells = await (await import("../../modules/spells/spells.api")).getSpells(characterId);
+      const preparedIds = freshSpells
+        .filter((s) => preparedSet.has(s.name) && !s.isRacial && !s.isCustom)
+        .map((s) => s.id);
+      await bulkSetPrepared(characterId, preparedIds);
+      await load();
+      setPrepOpen(false);
+    } finally {
+      setPrepSaving(false);
+    }
+  }
   const lockedCatalog    = classSpells.filter((s) => s.unlockLevel > characterNivel);
   const catalogByLevel   = [...availableCatalog].sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
 
-  const hasCatalog = classSpells.length > 0;
+  // Only show the free-add catalog for classes without a spell progression system.
+  // Classes with known/prepared/grimoire systems use SpellPickerModal / SpellPreparationModal instead.
+  const hasCatalog = classSpells.length > 0 && progression === null;
+
+  const allRacialSpells     = getRacialSpells(raceName, subRaceName);
+  const availableRacial     = allRacialSpells.filter((s) => s.unlockLevel <= characterNivel);
+  const lockedRacial        = allRacialSpells.filter((s) => s.unlockLevel > characterNivel);
+  const hasRacial           = allRacialSpells.length > 0;
 
   return (
     <Box>
@@ -531,8 +759,81 @@ export default function GrimorioSection({ characterId, classSpells = [], charact
         <SectionDivider />
       </Stack>
 
+      {/* ── Spell learning banners ─────────────────────────────────────────── */}
+
+      {/* Known spells: selection needed */}
+      {needsSpellPick && !loading && (
+        <Box sx={{
+          mb: 2, px: 1.75, py: 1.25, borderRadius: "12px",
+          background: "linear-gradient(135deg, rgba(120,85,255,0.12), rgba(90,143,255,0.08))",
+          border: "1px solid rgba(120,85,255,0.35)",
+        }}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+            <Box>
+              <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: "rgba(200,175,255,0.95)", lineHeight: 1.3 }}>
+                {pickerTarget?.title}
+              </Typography>
+              <Typography sx={{ fontSize: 11, color: "rgba(160,130,255,0.65)", mt: 0.3 }}>
+                {cantripDeficit > 0 && `${cantripDeficit} truque${cantripDeficit !== 1 ? "s" : ""}`}
+                {cantripDeficit > 0 && leveledDeficit > 0 && " · "}
+                {leveledDeficit > 0 && `${leveledDeficit} magia${leveledDeficit !== 1 ? "s" : ""} de nível`}
+                {" "}para escolher
+              </Typography>
+            </Box>
+            <Button
+              variant="contained" size="small"
+              onClick={() => setPickerOpen(true)}
+              sx={{
+                textTransform: "none", fontWeight: 800, borderRadius: "9px", px: 2, py: 0.75, flexShrink: 0,
+                background: "linear-gradient(135deg, rgba(120,85,255,0.9), rgba(90,143,255,0.9))",
+                boxShadow: "0 2px 12px rgba(100,70,230,0.4)",
+                "&:hover": { background: "linear-gradient(135deg, rgba(130,95,255,1), rgba(100,153,255,1))" },
+              }}
+            >
+              Escolher
+            </Button>
+          </Stack>
+        </Box>
+      )}
+
+      {/* Prepared/grimoire: preparation button */}
+      {prepTarget && !loading && (
+        <Box sx={{
+          mb: 2, px: 1.75, py: 1.25, borderRadius: "12px",
+          background: "linear-gradient(135deg, rgba(200,150,30,0.08), rgba(255,195,60,0.05))",
+          border: "1px solid rgba(200,150,30,0.3)",
+        }}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+            <Box>
+              <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: "rgba(255,215,100,0.92)", lineHeight: 1.3 }}>
+                {progression?.system === 'grimoire' ? 'Grimório' : 'Magias Preparadas'}
+              </Typography>
+              <Typography sx={{ fontSize: 11, color: "rgba(255,195,60,0.5)", mt: 0.3 }}>
+                {currentPrepared.length}/{maxPrepCount} preparadas
+                {" · "}atributo:{" "}
+                {progression?.prepAttr === 'int' ? 'Inteligência' : progression?.prepAttr === 'sab' ? 'Sabedoria' : 'Carisma'}
+                {" "}({attrMod(prepAttrValue) >= 0 ? "+" : ""}{attrMod(prepAttrValue)})
+              </Typography>
+            </Box>
+            <Button
+              variant="contained" size="small"
+              onClick={() => setPrepOpen(true)}
+              sx={{
+                textTransform: "none", fontWeight: 800, borderRadius: "9px", px: 2, py: 0.75, flexShrink: 0,
+                background: "linear-gradient(135deg, rgba(180,130,20,0.9), rgba(255,195,60,0.85))",
+                color: "#000",
+                boxShadow: "0 2px 12px rgba(180,130,20,0.3)",
+                "&:hover": { background: "linear-gradient(135deg, rgba(200,150,30,1), rgba(255,210,80,1))" },
+              }}
+            >
+              Preparar
+            </Button>
+          </Stack>
+        </Box>
+      )}
+
       {/* Tab switcher — segmented control */}
-      {hasCatalog && (
+      {(hasCatalog || hasRacial) && (
         <Box sx={{
           display: "flex", gap: 0.5,
           bgcolor: "rgba(255,255,255,0.04)",
@@ -542,10 +843,11 @@ export default function GrimorioSection({ characterId, classSpells = [], charact
           mb: 2,
         }}>
           {([
-            { v: "grimorio",  label: "Meu Grimório", icon: <AutoStoriesRoundedIcon sx={{ fontSize: 15 }} /> },
-            { v: "catalogo",  label: `Catálogo`,      icon: <CollectionsBookmarkRoundedIcon sx={{ fontSize: 15 }} />, badge: availableCatalog.length },
-          ] as { v: View; label: string; icon: React.ReactNode; badge?: number }[]).map(({ v, label, icon, badge }) => {
-            const active = view === v;
+            { v: "grimorio", label: "Grimório",  icon: <AutoStoriesRoundedIcon sx={{ fontSize: 15 }} /> },
+            hasCatalog ? { v: "catalogo", label: "Catálogo", icon: <CollectionsBookmarkRoundedIcon sx={{ fontSize: 15 }} />, badge: availableCatalog.length } : null,
+            hasRacial  ? { v: "racial",   label: "Racial",   icon: "🧬", badge: availableRacial.length } : null,
+          ].filter(Boolean) as { v: View; label: string; icon: React.ReactNode; badge?: number }[]).map(({ v, label, icon, badge }) => {
+            const isActive = view === v;
             return (
               <Box
                 key={v}
@@ -553,26 +855,26 @@ export default function GrimorioSection({ characterId, classSpells = [], charact
                 sx={{
                   flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
                   gap: 0.75, py: 1, borderRadius: "12px", cursor: "pointer",
-                  bgcolor: active ? "rgba(120,85,255,0.82)" : "transparent",
-                  boxShadow: active ? "0 2px 14px rgba(100,70,220,0.38)" : "none",
+                  bgcolor: isActive ? "rgba(120,85,255,0.82)" : "transparent",
+                  boxShadow: isActive ? "0 2px 14px rgba(100,70,220,0.38)" : "none",
                   transition: "all 0.22s cubic-bezier(.4,0,.2,1)",
-                  "&:hover": !active ? { bgcolor: "rgba(255,255,255,0.05)" } : {},
+                  "&:hover": !isActive ? { bgcolor: "rgba(255,255,255,0.05)" } : {},
                 }}
               >
-                <Box sx={{ color: active ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.35)", display: "flex", transition: "color 0.2s" }}>
+                <Box sx={{ color: isActive ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.35)", display: "flex", transition: "color 0.2s", fontSize: typeof icon === "string" ? 14 : undefined }}>
                   {icon}
                 </Box>
-                <Typography sx={{ fontSize: 12.5, fontWeight: active ? 800 : 600, color: active ? "#fff" : "rgba(255,255,255,0.38)", lineHeight: 1, transition: "color 0.2s" }}>
+                <Typography sx={{ fontSize: 12.5, fontWeight: isActive ? 800 : 600, color: isActive ? "#fff" : "rgba(255,255,255,0.38)", lineHeight: 1, transition: "color 0.2s" }}>
                   {label}
                 </Typography>
                 {badge !== undefined && badge > 0 && (
                   <Box sx={{
                     minWidth: 18, height: 18, borderRadius: "99px",
-                    bgcolor: active ? "rgba(255,255,255,0.22)" : "rgba(120,85,255,0.55)",
+                    bgcolor: isActive ? "rgba(255,255,255,0.22)" : "rgba(120,85,255,0.55)",
                     display: "flex", alignItems: "center", justifyContent: "center",
                     px: 0.6,
                   }}>
-                    <Typography sx={{ fontSize: 9.5, fontWeight: 900, color: active ? "#fff" : "rgba(220,200,255,0.95)", lineHeight: 1 }}>
+                    <Typography sx={{ fontSize: 9.5, fontWeight: 900, color: isActive ? "#fff" : "rgba(220,200,255,0.95)", lineHeight: 1 }}>
                       {badge}
                     </Typography>
                   </Box>
@@ -673,6 +975,97 @@ export default function GrimorioSection({ characterId, classSpells = [], charact
                       </Typography>
                       <Typography sx={{ fontSize: 11, color: "rgba(255,255,255,0.2)" }}>
                         {entry.school} · {Number(entry.level) === 0 ? "Truque" : `${entry.level}º círculo`}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ px: 0.9, py: 0.25, borderRadius: "7px", bgcolor: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", flexShrink: 0 }}>
+                      <Typography sx={{ fontSize: 10, fontWeight: 800, color: "rgba(255,255,255,0.3)" }}>
+                        Nv {entry.unlockLevel}
+                      </Typography>
+                    </Box>
+                  </Box>
+                ))}
+              </Stack>
+            </Box>
+          )}
+        </Stack>
+      )}
+
+      {/* ── RACIAL ───────────────────────────────────────────────── */}
+      {view === "racial" && (
+        <Stack spacing={1.5}>
+          {availableRacial.length === 0 && lockedRacial.length === 0 ? (
+            <Box sx={{ textAlign: "center", py: 4 }}>
+              <Typography sx={{ fontSize: 13, color: "rgba(255,255,255,0.3)", fontStyle: "italic" }}>
+                Nenhuma magia racial disponível.
+              </Typography>
+            </Box>
+          ) : (
+            <Stack spacing={0.75}>
+              {availableRacial.map((entry) => {
+                const learned  = learnedNames.has(entry.name);
+                const adding   = addingRacial === entry.name;
+                const lc       = levelColor(entry.level);
+                const isLimited = entry.level > 0;
+                return (
+                  <Box key={entry.name} sx={{ display: "flex", alignItems: "center", gap: 1.25, pl: 1.5, pr: 0.75, py: 1, borderRadius: "13px", border: `1px solid ${learned ? "rgba(120,85,255,0.2)" : "rgba(255,255,255,0.06)"}`, bgcolor: learned ? "rgba(120,85,255,0.06)" : "rgba(255,255,255,0.025)" }}>
+                    <Box sx={{ width: 34, height: 34, borderRadius: "10px", display: "grid", placeItems: "center", bgcolor: lc.bg, border: `1px solid ${lc.border}`, fontSize: 16, flexShrink: 0 }}>
+                      {getSchoolIcon(entry.school)}
+                    </Box>
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Stack direction="row" alignItems="center" spacing={0.75} flexWrap="wrap">
+                        <Typography sx={{ fontWeight: 700, fontSize: 13.5, color: "rgba(255,255,255,0.88)", lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {entry.name}
+                        </Typography>
+                        <Chip
+                          label={isLimited ? "1×/descanso" : "À vontade"}
+                          size="small"
+                          sx={{ height: 15, fontSize: 9, fontWeight: 800, bgcolor: isLimited ? "rgba(255,160,60,0.12)" : "rgba(60,200,120,0.1)", color: isLimited ? "rgba(255,180,80,0.9)" : "rgba(80,220,140,0.9)", border: `1px solid ${isLimited ? "rgba(255,160,60,0.22)" : "rgba(60,200,120,0.2)"}`, "& .MuiChip-label": { px: 0.6 } }}
+                        />
+                      </Stack>
+                      <Typography sx={{ fontSize: 11.5, color: "rgba(255,255,255,0.35)" }}>
+                        {entry.school}{entry.castingTime ? ` · ${entry.castingTime}` : ""}
+                      </Typography>
+                    </Box>
+                    <Stack direction="row" alignItems="center" spacing={0.25} sx={{ flexShrink: 0 }}>
+                      <Tooltip title="Ver detalhes" placement="top">
+                        <IconButton size="small" onClick={() => setDetailRacialSpell(entry)} sx={{ color: "rgba(255,255,255,0.22)", "&:hover": { color: "rgba(255,255,255,0.6)", bgcolor: "rgba(255,255,255,0.06)" } }}>
+                          <InfoOutlinedIcon sx={{ fontSize: 15 }} />
+                        </IconButton>
+                      </Tooltip>
+                      {learned ? (
+                        <Chip label="No grimório" size="small" sx={{ height: 18, fontSize: 9.5, fontWeight: 800, bgcolor: "rgba(120,85,255,0.15)", color: "rgba(180,150,255,0.8)", border: "1px solid rgba(120,85,255,0.22)", "& .MuiChip-label": { px: 0.75 } }} />
+                      ) : (
+                        <Tooltip title="Adicionar ao grimório" placement="top">
+                          <IconButton size="small" onClick={() => handleAddRacialSpell(entry)} disabled={adding} sx={{ color: "rgba(120,85,255,0.6)", "&:hover": { color: "rgba(160,130,255,0.9)", bgcolor: "rgba(120,85,255,0.12)" } }}>
+                            {adding ? <CircularProgress size={13} sx={{ color: "rgba(160,130,255,0.6)" }} /> : <AddRoundedIcon sx={{ fontSize: 16 }} />}
+                          </IconButton>
+                        </Tooltip>
+                      )}
+                    </Stack>
+                  </Box>
+                );
+              })}
+            </Stack>
+          )}
+
+          {lockedRacial.length > 0 && (
+            <Box sx={{ mt: 0.5 }}>
+              <Stack direction="row" alignItems="center" gap={1} sx={{ mb: 1, px: 0.5 }}>
+                <Typography sx={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,255,255,0.2)", whiteSpace: "nowrap" }}>
+                  Bloqueadas
+                </Typography>
+                <Box sx={{ flex: 1, height: "1px", bgcolor: "rgba(255,255,255,0.05)" }} />
+              </Stack>
+              <Stack spacing={0.5}>
+                {lockedRacial.sort((a, b) => a.unlockLevel - b.unlockLevel).map((entry) => (
+                  <Box key={entry.name} sx={{ display: "flex", alignItems: "center", gap: 1.25, pl: 1.5, pr: 1, py: 0.85, borderRadius: "13px", border: "1px solid rgba(255,255,255,0.04)", bgcolor: "rgba(255,255,255,0.01)", opacity: 0.5 }}>
+                    <Box sx={{ width: 30, height: 30, borderRadius: "9px", display: "grid", placeItems: "center", bgcolor: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", fontSize: 14, flexShrink: 0 }}>🔒</Box>
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography sx={{ fontWeight: 700, fontSize: 13, color: "rgba(255,255,255,0.4)", lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {entry.name}
+                      </Typography>
+                      <Typography sx={{ fontSize: 11, color: "rgba(255,255,255,0.2)" }}>
+                        {entry.school} · {entry.level === 0 ? "Truque" : `${entry.level}º círculo`}
                       </Typography>
                     </Box>
                     <Box sx={{ px: 0.9, py: 0.25, borderRadius: "7px", bgcolor: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", flexShrink: 0 }}>
@@ -877,7 +1270,10 @@ export default function GrimorioSection({ characterId, classSpells = [], charact
                             >
                               {spell.name}
                             </Typography>
-                            {spell.prepared && level > 0 && (
+                            {spell.isRacial && (
+                              <Chip label="Racial" size="small" sx={{ height: 15, fontSize: 9, fontWeight: 800, bgcolor: "rgba(255,160,60,0.1)", color: "rgba(255,180,80,0.9)", border: "1px solid rgba(255,160,60,0.2)", "& .MuiChip-label": { px: 0.6 } }} />
+                            )}
+                            {!spell.isRacial && spell.prepared && level > 0 && (
                               <Chip
                                 label="Preparada"
                                 size="small"
@@ -916,31 +1312,35 @@ export default function GrimorioSection({ characterId, classSpells = [], charact
                           </Tooltip>
                         )}
 
-                        <Tooltip title="Editar" placement="top">
-                          <IconButton
-                            size="small"
-                            onClick={() => openEdit(spell)}
-                            sx={{
-                              color: "rgba(160,130,255,0.5)",
-                              "&:hover": { color: "rgba(160,130,255,0.9)", bgcolor: "rgba(120,85,255,0.12)" },
-                            }}
-                          >
-                            <EditRoundedIcon sx={{ fontSize: 15 }} />
-                          </IconButton>
-                        </Tooltip>
+                        {isMaster && (
+                          <>
+                            <Tooltip title="Editar" placement="top">
+                              <IconButton
+                                size="small"
+                                onClick={() => openEdit(spell)}
+                                sx={{
+                                  color: "rgba(160,130,255,0.5)",
+                                  "&:hover": { color: "rgba(160,130,255,0.9)", bgcolor: "rgba(120,85,255,0.12)" },
+                                }}
+                              >
+                                <EditRoundedIcon sx={{ fontSize: 15 }} />
+                              </IconButton>
+                            </Tooltip>
 
-                        <Tooltip title="Remover" placement="top">
-                          <IconButton
-                            size="small"
-                            onClick={() => setDeleteSpellItem(spell)}
-                            sx={{
-                              color: "rgba(220,80,80,0.4)",
-                              "&:hover": { color: "rgba(255,120,120,0.9)", bgcolor: "rgba(220,60,60,0.1)" },
-                            }}
-                          >
-                            <DeleteOutlineRoundedIcon sx={{ fontSize: 15 }} />
-                          </IconButton>
-                        </Tooltip>
+                            <Tooltip title="Remover" placement="top">
+                              <IconButton
+                                size="small"
+                                onClick={() => setDeleteSpellItem(spell)}
+                                sx={{
+                                  color: "rgba(220,80,80,0.4)",
+                                  "&:hover": { color: "rgba(255,120,120,0.9)", bgcolor: "rgba(220,60,60,0.1)" },
+                                }}
+                              >
+                                <DeleteOutlineRoundedIcon sx={{ fontSize: 15 }} />
+                              </IconButton>
+                            </Tooltip>
+                          </>
+                        )}
                       </Box>
                     ))}
                   </Stack>
@@ -949,25 +1349,27 @@ export default function GrimorioSection({ characterId, classSpells = [], charact
             })
           )}
 
-          <Button
-            onClick={openAdd}
-            variant="outlined"
-            startIcon={<AddRoundedIcon />}
-            fullWidth
-            sx={{
-              borderRadius: "13px",
-              py: 1.1,
-              textTransform: "none",
-              fontWeight: 800,
-              fontSize: 13,
-              borderColor: "rgba(120,85,255,0.25)",
-              color: "rgba(180,150,255,0.8)",
-              bgcolor: "rgba(120,85,255,0.05)",
-              "&:hover": { borderColor: "rgba(120,85,255,0.45)", bgcolor: "rgba(120,85,255,0.1)" },
-            }}
-          >
-            Adicionar magia
-          </Button>
+          {isMaster && (
+            <Button
+              onClick={openAdd}
+              variant="outlined"
+              startIcon={<AddRoundedIcon />}
+              fullWidth
+              sx={{
+                borderRadius: "13px",
+                py: 1.1,
+                textTransform: "none",
+                fontWeight: 800,
+                fontSize: 13,
+                borderColor: "rgba(120,85,255,0.25)",
+                color: "rgba(180,150,255,0.8)",
+                bgcolor: "rgba(120,85,255,0.05)",
+                "&:hover": { borderColor: "rgba(120,85,255,0.45)", bgcolor: "rgba(120,85,255,0.1)" },
+              }}
+            >
+              Adicionar magia
+            </Button>
+          )}
         </Stack>
       )}
 
@@ -1065,8 +1467,93 @@ export default function GrimorioSection({ characterId, classSpells = [], charact
         })()}
       </AppDialog>
 
-      {spellForm("Adicionar Magia", addOpen, () => setAddOpen(false), handleAdd)}
-      {spellForm("Editar Magia", editSpell !== null, () => setEditSpell(null), handleEdit)}
+      {/* Dialog de detalhes de magia racial */}
+      <AppDialog
+        open={detailRacialSpell !== null}
+        onClose={() => setDetailRacialSpell(null)}
+        title={detailRacialSpell?.name ?? ""}
+        dividers
+        actions={
+          <Stack direction="row" spacing={1} sx={{ width: "100%" }}>
+            <Button onClick={() => setDetailRacialSpell(null)} variant="text" startIcon={<CloseRoundedIcon />} sx={{ textTransform: "none", fontWeight: 700, borderRadius: "12px", color: "rgba(255,255,255,0.3)", "&:hover": { bgcolor: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.6)" } }}>
+              Fechar
+            </Button>
+            <Box sx={{ flex: 1 }} />
+            {detailRacialSpell && !learnedNames.has(detailRacialSpell.name) && (
+              <AppDialogConfirmButton
+                onClick={() => { handleAddRacialSpell(detailRacialSpell); setDetailRacialSpell(null); }}
+                disabled={addingRacial === detailRacialSpell?.name}
+                sx={{ px: 3, py: 1.2, borderRadius: "12px" }}
+              >
+                <AddRoundedIcon sx={{ fontSize: 15, mr: 0.75 }} />
+                Adicionar ao grimório
+              </AppDialogConfirmButton>
+            )}
+          </Stack>
+        }
+      >
+        {detailRacialSpell && (() => {
+          const lc = levelColor(detailRacialSpell.level);
+          const isLimited = detailRacialSpell.level > 0;
+          const components = [
+            detailRacialSpell.componentV && "V",
+            detailRacialSpell.componentS && "S",
+            detailRacialSpell.componentM && "M",
+          ].filter(Boolean).join(", ");
+          return (
+            <Stack spacing={2}>
+              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                <Chip label={detailRacialSpell.level === 0 ? "Truque" : `${detailRacialSpell.level}º círculo`} size="small" sx={{ height: 22, fontSize: 11, fontWeight: 800, bgcolor: lc.bg, border: `1px solid ${lc.border}`, color: lc.text, "& .MuiChip-label": { px: 1.1 } }} />
+                <Chip label={isLimited ? "1× por descanso longo" : "À vontade"} size="small" sx={{ height: 22, fontSize: 11, fontWeight: 800, bgcolor: isLimited ? "rgba(255,160,60,0.1)" : "rgba(60,200,120,0.08)", color: isLimited ? "rgba(255,180,80,0.9)" : "rgba(80,220,140,0.9)", border: `1px solid ${isLimited ? "rgba(255,160,60,0.22)" : "rgba(60,200,120,0.2)"}`, "& .MuiChip-label": { px: 1.1 } }} />
+                <Typography sx={{ fontSize: 12.5, color: "rgba(255,255,255,0.4)" }}>
+                  {getSchoolIcon(detailRacialSpell.school)} {detailRacialSpell.school}
+                </Typography>
+              </Stack>
+              <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1 }}>
+                {[
+                  { label: "Tempo de conjuração", value: detailRacialSpell.castingTime },
+                  { label: "Alcance",              value: detailRacialSpell.range },
+                  { label: "Duração",              value: detailRacialSpell.duration },
+                  { label: "Componentes",          value: components || "—" },
+                ].map(({ label, value }) => (
+                  <Box key={label} sx={{ borderRadius: "10px", px: 1.25, py: 1, bgcolor: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                    <Typography sx={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255,255,255,0.28)", mb: 0.3 }}>{label}</Typography>
+                    <Typography sx={{ fontSize: 12.5, fontWeight: 600, color: "rgba(255,255,255,0.75)", lineHeight: 1.4 }}>{value}</Typography>
+                  </Box>
+                ))}
+              </Box>
+              {detailRacialSpell.componentM && detailRacialSpell.materialComponent && (
+                <Box sx={{ borderRadius: "10px", px: 1.25, py: 1, bgcolor: "rgba(255,195,80,0.04)", border: "1px solid rgba(255,195,80,0.12)" }}>
+                  <Typography sx={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255,195,80,0.4)", mb: 0.3 }}>Material</Typography>
+                  <Typography sx={{ fontSize: 12.5, color: "rgba(255,215,120,0.7)", lineHeight: 1.5 }}>{detailRacialSpell.materialComponent}</Typography>
+                </Box>
+              )}
+              <Typography sx={{ fontSize: 13.5, color: "rgba(255,255,255,0.6)", lineHeight: 1.7 }}>
+                {detailRacialSpell.description}
+              </Typography>
+            </Stack>
+          );
+        })()}
+      </AppDialog>
+
+      <SpellPickerModal
+        open={pickerOpen}
+        target={pickerTarget}
+        saving={pickerSaving}
+        onClose={() => setPickerOpen(false)}
+        onConfirm={handlePickerConfirm}
+      />
+
+      <SpellPreparationModal
+        open={prepOpen}
+        target={prepTarget}
+        saving={prepSaving}
+        onClose={() => setPrepOpen(false)}
+        onConfirm={handlePrepConfirm}
+      />
+
+      {isMaster && spellForm("Adicionar Magia", addOpen, () => setAddOpen(false), handleAdd)}
+      {isMaster && spellForm("Editar Magia", editSpell !== null, () => setEditSpell(null), handleEdit)}
 
       <AppDialog
         open={deleteSpellItem !== null}

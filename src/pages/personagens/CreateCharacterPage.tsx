@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Alert,
   Box,
@@ -14,6 +15,7 @@ import {
   InputAdornment,
   LinearProgress,
   Radio,
+  Slider,
   Stack,
   TextField,
   Typography,
@@ -84,6 +86,23 @@ const RACE_ICON: Record<string, string> = {
   "Gnomo":     "⚙️",
   "Meio-Orc":  "💪",
   "Hobbit":    "🌻",
+};
+
+type SizeKey = "TINY" | "SMALL" | "MEDIUM" | "LARGE" | "HUGE" | "GARGANTUAN";
+
+const RACE_HEIGHT: Record<string, { min: number; max: number; size: SizeKey }> = {
+  "Humano":    { min: 150, max: 200, size: "MEDIUM" },
+  "Elfo":      { min: 160, max: 200, size: "MEDIUM" },
+  "Anão":      { min: 120, max: 150, size: "MEDIUM" },
+  "Gnomo":     { min: 90,  max: 120, size: "SMALL"  },
+  "Meio-Orc":  { min: 180, max: 220, size: "MEDIUM" },
+  "Meio-Elfo": { min: 160, max: 200, size: "MEDIUM" },
+  "Draconato": { min: 180, max: 210, size: "MEDIUM" },
+  "Hobbit":    { min: 90,  max: 120, size: "SMALL"  },
+};
+
+const SIZE_MULTIPLIER: Record<SizeKey, number> = {
+  TINY: 0.5, SMALL: 1, MEDIUM: 1, LARGE: 2, HUGE: 4, GARGANTUAN: 8,
 };
 
 function getAttributeCost(value: number) {
@@ -221,7 +240,7 @@ export default function CreateCharacterPage() {
 
   const { name, attributes, pointsRemaining, money, health, maxHealth, selectedSkills, selectedRaceId, selectedSubRaceId, selectedClassId } = draft;
 
-  const [step,       setStep]       = useState<1 | 2 | 3>(1);
+  const [step,       setStep]       = useState<1 | 2 | 3 | 4>(1);
   const [saving,     setSaving]     = useState(false);
   const [error,      setError]      = useState<string | null>(null);
   const [skillsOpen, setSkillsOpen] = useState(false);
@@ -242,6 +261,7 @@ export default function CreateCharacterPage() {
   const [tempEquipSel,      setTempEquipSel]      = useState<Map<string, string | null>>(new Map());
   const [infoAnchorEl,      setInfoAnchorEl]      = useState<HTMLButtonElement | null>(null);
   const [infoPackKey,       setInfoPackKey]       = useState<string | null>(null);
+  const [height,            setHeight]            = useState<number>(170);
 
   useEffect(() => {
     setRacesLoading(true);
@@ -269,18 +289,26 @@ export default function CreateCharacterPage() {
     }
   }, [detailClass]);
 
-  const conMod        = Math.floor((attributes.constituicao - 10) / 2);
-  const effectiveHp   = health + conMod;
+  const selectedRace    = races.find((r) => r.id === selectedRaceId) ?? null;
+
+  useEffect(() => {
+    if (selectedRace) {
+      const range = RACE_HEIGHT[selectedRace.name];
+      if (range) setHeight(Math.round((range.min + range.max) / 2));
+    }
+  }, [selectedRaceId]);
+  const selectedSubRace = selectedRace?.subRaces?.find((sr) => sr.id === selectedSubRaceId) ?? null;
+  const conRaceBonus    = (selectedRace?.bonuses?.constituicao ?? 0) + (selectedSubRace?.bonuses?.constituicao ?? 0);
+  const conMod          = Math.floor((attributes.constituicao + conRaceBonus - 10) / 2);
+  const effectiveHp     = health + conMod;
 
   const canNext = useMemo(
-    () => name.trim().length > 0 && pointsRemaining === 0 && selectedSkills.length >= 5,
-    [name, pointsRemaining, selectedSkills.length]
+    () => name.trim().length > 0 && selectedSkills.length >= 5,
+    [name, selectedSkills.length]
   );
-  const selectedRace    = races.find((r) => r.id === selectedRaceId) ?? null;
-  const selectedSubRace = selectedRace?.subRaces?.find((sr) => sr.id === selectedSubRaceId) ?? null;
   const raceHasSubRaces = (selectedRace?.subRaces?.length ?? 0) > 0;
   const canGoStep3 = selectedRaceId !== null && (!raceHasSubRaces || selectedSubRaceId !== null);
-  const canSave    = canGoStep3 && selectedClassId !== null && !saving;
+  const canSave    = canGoStep3 && selectedClassId !== null && pointsRemaining === 0 && !saving;
 
   function openRaceDetail(race: Race) {
     setTempSubRaceId(selectedRaceId === race.id ? selectedSubRaceId : null);
@@ -335,14 +363,14 @@ export default function CreateCharacterPage() {
   function handleNext() {
     setError(null);
     if (!name.trim())              return setError("O nome do personagem é obrigatório.");
-    if (pointsRemaining > 0)       return setError("Você ainda tem pontos para distribuir.");
     if (selectedSkills.length < 5) return setError("Selecione pelo menos 5 perícias.");
-    setStep(2);
+    setStep(4);
   }
 
   async function handleSave() {
-    if (!selectedRaceId)    return setError("Selecione uma raça para continuar.");
-    if (!selectedClassId)   return setError("Selecione uma classe para continuar.");
+    if (!selectedRaceId)        return setError("Selecione uma raça para continuar.");
+    if (!selectedClassId)       return setError("Selecione uma classe para continuar.");
+    if (pointsRemaining > 0)    return setError("Você ainda tem pontos para distribuir.");
     setError(null);
     setSaving(true);
     try {
@@ -355,6 +383,7 @@ export default function CreateCharacterPage() {
         raceId: selectedRaceId ?? undefined,
         subRaceId: selectedSubRaceId ?? undefined,
         classId: selectedClassId ?? undefined,
+        height,
       });
 
       if (pendingEquipment.length > 0 && (char as any)?.id) {
@@ -403,19 +432,6 @@ export default function CreateCharacterPage() {
             <Typography variant="h5" sx={{ fontWeight: 900, letterSpacing: -0.5, color: "rgba(255,255,255,0.93)" }}>
               Novo Personagem
             </Typography>
-            {step === 1 && (
-              <Box sx={{
-                px: 1.2, py: 0.5, borderRadius: "9px", display: "flex", alignItems: "center", gap: 0.5,
-                bgcolor: pointsRemaining > 0 ? "rgba(120,85,255,0.15)" : "rgba(75,175,130,0.12)",
-                border: `1px solid ${pointsRemaining > 0 ? "rgba(120,85,255,0.28)" : "rgba(75,175,130,0.28)"}`,
-                transition: "all 0.3s",
-              }}>
-                <PsychologyRoundedIcon sx={{ fontSize: 14, color: pointsRemaining > 0 ? "rgba(180,150,255,0.85)" : "rgba(75,200,130,0.85)" }} />
-                <Typography sx={{ fontSize: 12, fontWeight: 700, lineHeight: 1, color: pointsRemaining > 0 ? "rgba(180,150,255,0.9)" : "rgba(100,220,160,0.9)" }}>
-                  {pointsRemaining} pts
-                </Typography>
-              </Box>
-            )}
           </Stack>
           {saving && (
             <LinearProgress sx={{ mt: 0.5, borderRadius: 2, height: 2, bgcolor: "rgba(255,255,255,0.06)", "& .MuiLinearProgress-bar": { background: "linear-gradient(90deg, #7B54FF, #5B8FFF)" } }} />
@@ -425,7 +441,7 @@ export default function CreateCharacterPage() {
         <Glass elevation={0}>
           <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
 
-            <StepIndicator current={step} total={3} />
+            <StepIndicator current={step} total={4} />
 
             {error && (
               <Alert severity="error" sx={{ mb: 2, borderRadius: "10px", py: 0.5, bgcolor: "rgba(220,60,60,0.09)", border: "1px solid rgba(220,60,60,0.18)", color: "rgba(255,150,150,0.9)", fontSize: 13, "& .MuiAlert-icon": { color: "rgba(255,110,110,0.7)", fontSize: 18 } }}>
@@ -433,101 +449,8 @@ export default function CreateCharacterPage() {
               </Alert>
             )}
 
-            {/* ══ STEP 1 ══ */}
+            {/* ══ STEP 1 — Escolha de raça ══ */}
             {step === 1 && (
-              <Stack spacing={2}>
-
-                {/* Nome */}
-                <TextField
-                  label="Nome do personagem"
-                  value={name}
-                  onChange={(e) => setDraftName(e.target.value)}
-                  fullWidth
-                  InputProps={{ startAdornment: <InputAdornment position="start"><PersonRoundedIcon /></InputAdornment> }}
-                  sx={inputSx}
-                />
-
-                {/* Stats pills */}
-                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                  <Box onClick={() => { setTempRoll(""); setMoneyOpen(true); }} sx={{ display: "flex", alignItems: "center", gap: 0.6, px: 1.2, py: 0.6, borderRadius: "9px", cursor: "pointer", bgcolor: "rgba(255,195,80,0.08)", border: "1px solid rgba(255,195,80,0.18)", transition: "all 0.18s", "&:hover": { bgcolor: "rgba(255,195,80,0.14)", borderColor: "rgba(255,195,80,0.3)" } }}>
-                    <MonetizationOnRoundedIcon sx={{ fontSize: 14, color: "rgba(255,195,80,0.8)" }} />
-                    <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: "rgba(255,210,100,0.9)" }}>{money} ouro</Typography>
-                  </Box>
-
-                  <Box onClick={() => { setTempRoll(""); setHealthOpen(true); }} sx={{ display: "flex", alignItems: "center", gap: 0.6, px: 1.2, py: 0.6, borderRadius: "9px", cursor: "pointer", bgcolor: "rgba(75,175,130,0.08)", border: "1px solid rgba(75,175,130,0.2)", transition: "all 0.18s", "&:hover": { bgcolor: "rgba(75,175,130,0.14)", borderColor: "rgba(75,175,130,0.35)" } }}>
-                    <FavoriteRoundedIcon sx={{ fontSize: 14, color: "rgba(75,200,130,0.85)" }} />
-                    <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: "rgba(100,220,160,0.9)" }}>
-                      {effectiveHp} HP
-                      {conMod !== 0 && (
-                        <Typography component="span" sx={{ fontSize: 11, fontWeight: 600, ml: 0.4, opacity: 0.7 }}>
-                          ({conMod > 0 ? "+" : ""}{conMod} CON)
-                        </Typography>
-                      )}
-                    </Typography>
-                  </Box>
-
-                  <Box onClick={() => setSkillsOpen(true)} sx={{ display: "flex", alignItems: "center", gap: 0.6, px: 1.2, py: 0.6, borderRadius: "9px", cursor: "pointer", bgcolor: selectedSkills.length >= 5 ? "rgba(120,85,255,0.12)" : "rgba(255,255,255,0.04)", border: `1px solid ${selectedSkills.length >= 5 ? "rgba(120,85,255,0.3)" : "rgba(255,255,255,0.08)"}`, transition: "all 0.18s", "&:hover": { bgcolor: "rgba(120,85,255,0.18)", borderColor: "rgba(120,85,255,0.4)" } }}>
-                    <AutoAwesomeRoundedIcon sx={{ fontSize: 14, color: selectedSkills.length >= 5 ? "rgba(180,150,255,0.85)" : "rgba(255,255,255,0.4)" }} />
-                    <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: selectedSkills.length >= 5 ? "rgba(180,150,255,0.95)" : "rgba(255,255,255,0.5)" }}>{selectedSkills.length}/5 perícias</Typography>
-                  </Box>
-                </Stack>
-
-                <Divider sx={{ opacity: 0.1 }} />
-
-                {/* Atributos */}
-                <Stack spacing={0.9}>
-                  {ATTRS.map((a) => {
-                    const v       = attributes[a.key];
-                    const mod     = getModifier(v);
-                    const canUp   = v < 15 && pointsRemaining >= getAttributeCost(v + 1) - getAttributeCost(v);
-                    const canDown = v > 8;
-                    return (
-                      <Box key={a.key} sx={{ display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 1, px: 1.2, py: 0.9, borderRadius: "12px", border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.025)", transition: "border-color 0.18s", "&:hover": { borderColor: "rgba(255,255,255,0.1)" } }}>
-                        <Stack direction="row" alignItems="center" spacing={1.2} sx={{ flex: 1, minWidth: 0 }}>
-                          <Box sx={{ width: 38, height: 38, borderRadius: "10px", display: "grid", placeItems: "center", flexShrink: 0, fontSize: 11, fontWeight: 800, letterSpacing: 0.6, color: "rgba(200,180,255,0.9)", bgcolor: "rgba(120,85,255,0.12)", border: "1px solid rgba(120,85,255,0.2)" }}>
-                            {ATTR_BADGE[a.key]}
-                          </Box>
-                          <Box sx={{ minWidth: 0 }}>
-                            <Typography sx={{ fontWeight: 700, fontSize: 13.5, lineHeight: 1.2, color: "rgba(255,255,255,0.9)" }}>{a.label}</Typography>
-                            <Typography sx={{ fontSize: 11.5, opacity: 0.5, lineHeight: 1.2, color: "white" }}>
-                              mod <b style={{ opacity: 0.5, color: "white" }}>{fmtMod(mod)}</b>
-                            </Typography>
-                          </Box>
-                        </Stack>
-                        <Stack direction="row" alignItems="center" spacing={0.5} sx={{ flexShrink: 0 }}>
-                          <IconButton size="small" onClick={() => decreaseAttribute(a.key)} disabled={!canDown}
-                            sx={{ width: 32, height: 32, borderRadius: "8px", border: "1px solid rgba(255,255,255,0.08)", bgcolor: "rgba(255,255,255,0.03)", color: "rgba(255,255,255,0.55)", flexShrink: 0, "&.Mui-disabled": { opacity: 0.18 } }}>
-                            <RemoveRoundedIcon sx={{ fontSize: 16 }} />
-                          </IconButton>
-                          <Typography sx={{ width: 28, textAlign: "center", fontWeight: 800, fontSize: 16, flexShrink: 0, color: v > 10 ? "rgba(190,165,255,0.95)" : "rgba(255,255,255,0.85)" }}>
-                            {v}
-                          </Typography>
-                          <IconButton size="small" onClick={() => increaseAttribute(a.key)} disabled={!canUp}
-                            sx={{ width: 32, height: 32, borderRadius: "8px", border: "1px solid rgba(255,255,255,0.08)", bgcolor: "rgba(255,255,255,0.03)", color: "rgba(255,255,255,0.55)", flexShrink: 0, "&:hover": { bgcolor: "rgba(120,85,255,0.15)", borderColor: "rgba(120,85,255,0.3)", color: "rgba(180,150,255,0.9)" }, "&.Mui-disabled": { opacity: 0.18 } }}>
-                            <AddRoundedIcon sx={{ fontSize: 16 }} />
-                          </IconButton>
-                        </Stack>
-                      </Box>
-                    );
-                  })}
-                </Stack>
-
-                {/* Próximo */}
-                <Button onClick={handleNext} variant="contained" disabled={!canNext}
-                  sx={{ mt: 0.5, py: 1.35, borderRadius: "10px", textTransform: "none", fontWeight: 700, fontSize: 14.5, background: "linear-gradient(135deg, #7B54FF 0%, #5B8FFF 100%)", boxShadow: "0 6px 24px rgba(100,70,230,0.35)", "&:hover": { boxShadow: "0 10px 32px rgba(100,70,230,0.5)", transform: "translateY(-1px)" }, "&:active": { transform: "translateY(0)" }, "&.Mui-disabled": { background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.2)" } }}>
-                  Próximo
-                </Button>
-
-                <Button type="button" onClick={() => navigate(ROUTES.personagens)}
-                  startIcon={<ArrowBackRoundedIcon sx={{ fontSize: "16px !important" }} />}
-                  sx={{ textTransform: "none", fontWeight: 600, fontSize: 13.5, color: "rgba(255,255,255,0.32)", borderRadius: "10px", "&:hover": { color: "rgba(255,255,255,0.6)", bgcolor: "rgba(255,255,255,0.04)" } }}>
-                  Cancelar
-                </Button>
-              </Stack>
-            )}
-
-            {/* ══ STEP 2 — Escolha de raça ══ */}
-            {step === 2 && (
               <Stack spacing={2.5}>
                 <Box>
                   <Typography sx={{ fontWeight: 800, fontSize: 15.5, color: "rgba(255,255,255,0.92)", mb: 0.5 }}>
@@ -555,40 +478,34 @@ export default function CreateCharacterPage() {
                   </Box>
                 )}
 
-                {/* Preview de atributos com bônus */}
+                {/* Preview de bônus da raça */}
                 {selectedRace && (
                   <Box sx={{ borderRadius: "14px", border: "1px solid rgba(120,85,255,0.2)", bgcolor: "rgba(120,85,255,0.06)", p: 1.75 }}>
                     <Typography sx={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(180,150,255,0.6)", mb: 0.5 }}>
-                      Atributos finais
+                      Bônus racial
                     </Typography>
                     <Typography sx={{ fontSize: 12, color: "rgba(255,255,255,0.35)", mb: 1.25 }}>
                       {selectedRace.name}{selectedSubRace ? ` · ${selectedSubRace.name}` : ""}
                     </Typography>
                     <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 0.75 }}>
                       {ATTRS.map((a) => {
-                        const base     = attributes[a.key];
-                        const rBonus   = selectedRace.bonuses[a.key] ?? 0;
-                        const srBonus  = selectedSubRace?.bonuses[a.key] ?? 0;
-                        const bonus    = rBonus + srBonus;
-                        const final    = base + bonus;
+                        const rBonus  = selectedRace.bonuses[a.key] ?? 0;
+                        const srBonus = selectedSubRace?.bonuses[a.key] ?? 0;
+                        const bonus   = rBonus + srBonus;
+                        if (bonus === 0) return null;
                         return (
                           <Box key={a.key} sx={{
                             borderRadius: "10px", p: 1,
-                            border: `1px solid ${bonus > 0 ? "rgba(160,130,255,0.3)" : "rgba(255,255,255,0.07)"}`,
-                            bgcolor: bonus > 0 ? "rgba(120,85,255,0.1)" : "rgba(255,255,255,0.02)",
+                            border: "1px solid rgba(160,130,255,0.3)",
+                            bgcolor: "rgba(120,85,255,0.1)",
                             textAlign: "center",
                           }}>
                             <Typography sx={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.1em", color: "rgba(255,255,255,0.35)" }}>
                               {ATTR_BADGE[a.key]}
                             </Typography>
-                            <Typography sx={{ fontSize: 18, fontWeight: 900, color: bonus > 0 ? "rgba(200,180,255,0.95)" : "rgba(255,255,255,0.8)", lineHeight: 1.1 }}>
-                              {final}
+                            <Typography sx={{ fontSize: 16, fontWeight: 900, color: "rgba(200,180,255,0.95)", lineHeight: 1.2 }}>
+                              +{bonus}
                             </Typography>
-                            {bonus > 0 && (
-                              <Typography sx={{ fontSize: 10, fontWeight: 700, color: "rgba(160,130,255,0.8)" }}>
-                                +{bonus}
-                              </Typography>
-                            )}
                           </Box>
                         );
                       })}
@@ -596,22 +513,21 @@ export default function CreateCharacterPage() {
                   </Box>
                 )}
 
-                {/* Próximo → step 3 */}
-                <Button onClick={() => { if (!canGoStep3) return setError("Selecione uma raça para continuar."); setError(null); setStep(3); }} variant="contained" disabled={!canGoStep3}
+                <Button onClick={() => { if (!canGoStep3) return setError("Selecione uma raça para continuar."); setError(null); setStep(2); }} variant="contained" disabled={!canGoStep3}
                   sx={{ py: 1.35, borderRadius: "10px", textTransform: "none", fontWeight: 700, fontSize: 14.5, background: "linear-gradient(135deg, #7B54FF 0%, #5B8FFF 100%)", boxShadow: "0 6px 24px rgba(100,70,230,0.35)", "&:hover": { boxShadow: "0 10px 32px rgba(100,70,230,0.5)", transform: "translateY(-1px)" }, "&:active": { transform: "translateY(0)" }, "&.Mui-disabled": { background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.2)" } }}>
                   Próximo
                 </Button>
 
-                <Button onClick={() => { setStep(1); setError(null); }}
+                <Button type="button" onClick={() => navigate(ROUTES.personagens)}
                   startIcon={<ArrowBackRoundedIcon sx={{ fontSize: "16px !important" }} />}
                   sx={{ textTransform: "none", fontWeight: 600, fontSize: 13.5, color: "rgba(255,255,255,0.32)", borderRadius: "10px", "&:hover": { color: "rgba(255,255,255,0.6)", bgcolor: "rgba(255,255,255,0.04)" } }}>
-                  Voltar
+                  Cancelar
                 </Button>
               </Stack>
             )}
 
-            {/* ══ STEP 3 — Escolha de classe ══ */}
-            {step === 3 && (
+            {/* ══ STEP 2 — Escolha de classe ══ */}
+            {step === 2 && (
               <Stack spacing={2.5}>
                 <Box>
                   <Typography sx={{ fontWeight: 800, fontSize: 15.5, color: "rgba(255,255,255,0.92)", mb: 0.5 }}>
@@ -678,13 +594,251 @@ export default function CreateCharacterPage() {
                   </Box>
                 )}
 
-                {/* Criar */}
-                <Button onClick={handleSave} variant="contained" disabled={!canSave}
+                <Button
+                  onClick={() => { if (!selectedClassId) return setError("Selecione uma classe para continuar."); setError(null); setStep(3); }}
+                  variant="contained"
+                  disabled={!selectedClassId}
                   sx={{ py: 1.35, borderRadius: "10px", textTransform: "none", fontWeight: 700, fontSize: 14.5, background: "linear-gradient(135deg, #7B54FF 0%, #5B8FFF 100%)", boxShadow: "0 6px 24px rgba(100,70,230,0.35)", "&:hover": { boxShadow: "0 10px 32px rgba(100,70,230,0.5)", transform: "translateY(-1px)" }, "&:active": { transform: "translateY(0)" }, "&.Mui-disabled": { background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.2)" } }}>
-                  {saving ? <CircularProgress size={18} sx={{ color: "rgba(255,255,255,0.5)" }} /> : "Criar Personagem"}
+                  Próximo
+                </Button>
+
+                <Button onClick={() => { setStep(1); setError(null); }}
+                  startIcon={<ArrowBackRoundedIcon sx={{ fontSize: "16px !important" }} />}
+                  sx={{ textTransform: "none", fontWeight: 600, fontSize: 13.5, color: "rgba(255,255,255,0.32)", borderRadius: "10px", "&:hover": { color: "rgba(255,255,255,0.6)", bgcolor: "rgba(255,255,255,0.04)" } }}>
+                  Voltar
+                </Button>
+              </Stack>
+            )}
+
+            {/* ══ STEP 3 — Nome, Ouro e Perícias ══ */}
+            {step === 3 && (
+              <Stack spacing={2}>
+
+                {/* Nome */}
+                <TextField
+                  label="Nome do personagem"
+                  value={name}
+                  onChange={(e) => setDraftName(e.target.value)}
+                  fullWidth
+                  InputProps={{ startAdornment: <InputAdornment position="start"><PersonRoundedIcon /></InputAdornment> }}
+                  sx={inputSx}
+                />
+
+                {/* Ouro */}
+                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                  <Box onClick={() => { setTempRoll(""); setMoneyOpen(true); }} sx={{ display: "flex", alignItems: "center", gap: 0.6, px: 1.2, py: 0.6, borderRadius: "9px", cursor: "pointer", bgcolor: "rgba(255,195,80,0.08)", border: "1px solid rgba(255,195,80,0.18)", transition: "all 0.18s", "&:hover": { bgcolor: "rgba(255,195,80,0.14)", borderColor: "rgba(255,195,80,0.3)" } }}>
+                    <MonetizationOnRoundedIcon sx={{ fontSize: 14, color: "rgba(255,195,80,0.8)" }} />
+                    <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: "rgba(255,210,100,0.9)" }}>{money} ouro</Typography>
+                  </Box>
+                </Stack>
+
+                {/* ── PERÍCIAS ─────────────────────────────────────── */}
+                <Box
+                  onClick={() => setSkillsOpen(true)}
+                  sx={{
+                    px: 1.75, py: 1.5, borderRadius: "14px", cursor: "pointer",
+                    border: selectedSkills.length >= 5
+                      ? "1px solid rgba(120,85,255,0.35)"
+                      : "1.5px dashed rgba(255,255,255,0.14)",
+                    bgcolor: selectedSkills.length >= 5
+                      ? "rgba(120,85,255,0.08)"
+                      : "rgba(255,255,255,0.02)",
+                    transition: "all .2s",
+                    "&:hover": {
+                      borderColor: "rgba(120,85,255,0.55)",
+                      bgcolor: "rgba(120,85,255,0.13)",
+                    },
+                  }}
+                >
+                  <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.75 }}>
+                    <Stack direction="row" alignItems="center" spacing={1}>
+                      <AutoAwesomeRoundedIcon sx={{ fontSize: 15, color: selectedSkills.length >= 5 ? "rgba(180,150,255,0.85)" : "rgba(255,255,255,0.35)" }} />
+                      <Typography sx={{ fontWeight: 800, fontSize: 13.5, color: selectedSkills.length >= 5 ? "rgba(220,200,255,0.95)" : "rgba(255,255,255,0.75)" }}>
+                        Perícias
+                      </Typography>
+                    </Stack>
+                    <Box sx={{
+                      px: 1, py: 0.25, borderRadius: "8px",
+                      bgcolor: selectedSkills.length >= 5 ? "rgba(120,85,255,0.2)" : "rgba(255,255,255,0.06)",
+                      border: `1px solid ${selectedSkills.length >= 5 ? "rgba(120,85,255,0.4)" : "rgba(255,255,255,0.1)"}`,
+                    }}>
+                      <Typography sx={{ fontSize: 12, fontWeight: 800, color: selectedSkills.length >= 5 ? "rgba(200,175,255,0.95)" : "rgba(255,255,255,0.4)" }}>
+                        {selectedSkills.length} / 5
+                      </Typography>
+                    </Box>
+                  </Stack>
+
+                  <Typography sx={{ fontSize: 12.5, color: selectedSkills.length >= 5 ? "rgba(180,155,255,0.6)" : "rgba(255,255,255,0.32)", mb: 1.1 }}>
+                    {selectedSkills.length === 0
+                      ? "Toque aqui para escolher as 5 perícias do seu personagem"
+                      : selectedSkills.length < 5
+                      ? `Escolha mais ${5 - selectedSkills.length} perícia${5 - selectedSkills.length > 1 ? "s" : ""}`
+                      : "Perícias selecionadas ✓"}
+                  </Typography>
+
+                  <Box sx={{ height: 3, borderRadius: 99, bgcolor: "rgba(255,255,255,0.07)", overflow: "hidden" }}>
+                    <Box sx={{
+                      height: "100%", borderRadius: 99,
+                      width: `${(selectedSkills.length / 5) * 100}%`,
+                      background: "linear-gradient(90deg, #7c4dff, #b47eff)",
+                      transition: "width .35s cubic-bezier(.4,0,.2,1)",
+                      boxShadow: selectedSkills.length > 0 ? "0 0 8px rgba(140,80,255,0.45)" : "none",
+                    }} />
+                  </Box>
+                </Box>
+
+                {/* ── Altura ─────────────────────────────────────── */}
+                {(() => {
+                  const range = selectedRace ? RACE_HEIGHT[selectedRace.name] : null;
+                  if (!range) return null;
+                  return (
+                    <Box sx={{ px: 1.75, py: 1.5, borderRadius: "14px", border: "1px solid rgba(255,255,255,0.07)", bgcolor: "rgba(255,255,255,0.02)" }}>
+                      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.5 }}>
+                        <Stack direction="row" alignItems="center" spacing={1}>
+                          <Typography sx={{ fontSize: 15, lineHeight: 1 }}>📏</Typography>
+                          <Typography sx={{ fontWeight: 800, fontSize: 13.5, color: "rgba(255,255,255,0.85)" }}>Altura</Typography>
+                        </Stack>
+                        <Stack direction="row" alignItems="baseline" spacing={0.4}>
+                          <Typography sx={{ fontWeight: 900, fontSize: 20, color: "rgba(190,165,255,0.95)", lineHeight: 1 }}>{height}</Typography>
+                          <Typography sx={{ fontSize: 12, color: "rgba(255,255,255,0.35)", fontWeight: 600 }}>cm</Typography>
+                        </Stack>
+                      </Stack>
+                      <Slider
+                        value={height}
+                        min={range.min}
+                        max={range.max}
+                        step={1}
+                        onChange={(_, v) => setHeight(v as number)}
+                        sx={{
+                          color: "rgba(120,85,255,0.85)",
+                          height: 4,
+                          "& .MuiSlider-thumb": {
+                            width: 16, height: 16,
+                            bgcolor: "#fff",
+                            boxShadow: "0 0 0 3px rgba(120,85,255,0.4)",
+                            "&:hover": { boxShadow: "0 0 0 5px rgba(120,85,255,0.3)" },
+                          },
+                          "& .MuiSlider-rail": { bgcolor: "rgba(255,255,255,0.1)" },
+                        }}
+                      />
+                      <Stack direction="row" justifyContent="space-between">
+                        <Typography sx={{ fontSize: 11, color: "rgba(255,255,255,0.25)" }}>{range.min} cm</Typography>
+                        <Typography sx={{ fontSize: 11, color: "rgba(255,255,255,0.25)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{range.size}</Typography>
+                        <Typography sx={{ fontSize: 11, color: "rgba(255,255,255,0.25)" }}>{range.max} cm</Typography>
+                      </Stack>
+                    </Box>
+                  );
+                })()}
+
+                <Button onClick={handleNext} variant="contained" disabled={!canNext}
+                  sx={{ mt: 0.5, py: 1.35, borderRadius: "10px", textTransform: "none", fontWeight: 700, fontSize: 14.5, background: "linear-gradient(135deg, #7B54FF 0%, #5B8FFF 100%)", boxShadow: "0 6px 24px rgba(100,70,230,0.35)", "&:hover": { boxShadow: "0 10px 32px rgba(100,70,230,0.5)", transform: "translateY(-1px)" }, "&:active": { transform: "translateY(0)" }, "&.Mui-disabled": { background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.2)" } }}>
+                  Próximo
                 </Button>
 
                 <Button onClick={() => { setStep(2); setError(null); }}
+                  startIcon={<ArrowBackRoundedIcon sx={{ fontSize: "16px !important" }} />}
+                  sx={{ textTransform: "none", fontWeight: 600, fontSize: 13.5, color: "rgba(255,255,255,0.32)", borderRadius: "10px", "&:hover": { color: "rgba(255,255,255,0.6)", bgcolor: "rgba(255,255,255,0.04)" } }}>
+                  Voltar
+                </Button>
+              </Stack>
+            )}
+
+            {/* ══ STEP 4 — Atributos e Vida ══ */}
+            {step === 4 && (
+              <Stack spacing={2.5}>
+                <Box>
+                  <Typography sx={{ fontWeight: 800, fontSize: 15.5, color: "rgba(255,255,255,0.92)", mb: 0.5 }}>
+                    Atributos e Vida
+                  </Typography>
+                  <Typography sx={{ fontSize: 13, color: "rgba(255,255,255,0.38)", lineHeight: 1.5 }}>
+                    Distribua seus pontos e defina a vida inicial do personagem.
+                    {selectedRace && (
+                      <> Os bônus de <b style={{ color: "rgba(180,150,255,0.75)" }}>{selectedRace.name}</b> serão somados automaticamente.</>
+                    )}
+                  </Typography>
+                </Box>
+
+                {/* HP pill + Carry capacity */}
+                {(() => {
+                  const raceRange   = selectedRace ? RACE_HEIGHT[selectedRace.name] : null;
+                  const size        = raceRange?.size ?? "MEDIUM";
+                  const sizeMulti   = SIZE_MULTIPLIER[size];
+                  const forcaRBonus = (selectedRace?.bonuses?.forca ?? 0) + (selectedSubRace?.bonuses?.forca ?? 0);
+                  const forcaTotal  = attributes.forca + forcaRBonus;
+                  const carryKg     = Math.round(forcaTotal * 15 * sizeMulti * 0.453592);
+                  return (
+                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                      <Box onClick={() => { setTempRoll(""); setHealthOpen(true); }} sx={{ display: "flex", alignItems: "center", gap: 0.6, px: 1.2, py: 0.6, borderRadius: "9px", cursor: "pointer", bgcolor: "rgba(75,175,130,0.08)", border: "1px solid rgba(75,175,130,0.2)", transition: "all 0.18s", "&:hover": { bgcolor: "rgba(75,175,130,0.14)", borderColor: "rgba(75,175,130,0.35)" } }}>
+                        <FavoriteRoundedIcon sx={{ fontSize: 14, color: "rgba(75,200,130,0.85)" }} />
+                        <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: "rgba(100,220,160,0.9)" }}>
+                          {effectiveHp} HP
+                          {conMod !== 0 && (
+                            <Typography component="span" sx={{ fontSize: 11, fontWeight: 600, ml: 0.4, opacity: 0.7 }}>
+                              ({conMod > 0 ? "+" : ""}{conMod} CON)
+                            </Typography>
+                          )}
+                        </Typography>
+                      </Box>
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 0.6, px: 1.2, py: 0.6, borderRadius: "9px", bgcolor: "rgba(255,180,50,0.07)", border: "1px solid rgba(255,180,50,0.18)" }}>
+                        <Typography sx={{ fontSize: 13, lineHeight: 1 }}>🎒</Typography>
+                        <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: "rgba(255,200,100,0.85)" }}>
+                          {carryKg} kg
+                        </Typography>
+                      </Box>
+                    </Stack>
+                  );
+                })()}
+
+                {/* Atributos */}
+                <Stack spacing={0.9}>
+                  {ATTRS.map((a) => {
+                    const v       = attributes[a.key];
+                    const rBonus  = (selectedRace?.bonuses[a.key] ?? 0) + (selectedSubRace?.bonuses[a.key] ?? 0);
+                    const total   = v + rBonus;
+                    const mod     = getModifier(total);
+                    const canUp   = v < 15 && pointsRemaining >= getAttributeCost(v + 1) - getAttributeCost(v);
+                    const canDown = v > 8;
+                    return (
+                      <Box key={a.key} sx={{ display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 1, px: 1.2, py: 0.9, borderRadius: "12px", border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.025)", transition: "border-color 0.18s", "&:hover": { borderColor: "rgba(255,255,255,0.1)" } }}>
+                        <Stack direction="row" alignItems="center" spacing={1.2} sx={{ flex: 1, minWidth: 0 }}>
+                          <Box sx={{ width: 38, height: 38, borderRadius: "10px", display: "grid", placeItems: "center", flexShrink: 0, fontSize: 11, fontWeight: 800, letterSpacing: 0.6, color: "rgba(200,180,255,0.9)", bgcolor: "rgba(120,85,255,0.12)", border: "1px solid rgba(120,85,255,0.2)" }}>
+                            {ATTR_BADGE[a.key]}
+                          </Box>
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography sx={{ fontWeight: 700, fontSize: 13.5, lineHeight: 1.2, color: "rgba(255,255,255,0.9)" }}>{a.label}</Typography>
+                            <Typography sx={{ fontSize: 11.5, lineHeight: 1.2, color: "white" }}>
+                              <span style={{ opacity: 0.5 }}>mod <b style={{ opacity: 0.5 }}>{fmtMod(mod)}</b></span>
+                              {rBonus > 0 && (
+                                <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 700, color: "rgba(160,130,255,0.8)" }}>+{rBonus} raça</span>
+                              )}
+                            </Typography>
+                          </Box>
+                        </Stack>
+                        <Stack direction="row" alignItems="center" spacing={0.5} sx={{ flexShrink: 0 }}>
+                          <IconButton size="small" onClick={() => decreaseAttribute(a.key)} disabled={!canDown}
+                            sx={{ width: 32, height: 32, borderRadius: "8px", border: "1px solid rgba(255,255,255,0.08)", bgcolor: "rgba(255,255,255,0.03)", color: "rgba(255,255,255,0.55)", flexShrink: 0, "&.Mui-disabled": { opacity: 0.18 } }}>
+                            <RemoveRoundedIcon sx={{ fontSize: 16 }} />
+                          </IconButton>
+                          <Typography sx={{ width: 28, textAlign: "center", fontWeight: 800, fontSize: 16, flexShrink: 0, color: total > 10 ? "rgba(190,165,255,0.95)" : "rgba(255,255,255,0.85)" }}>
+                            {total}
+                          </Typography>
+                          <IconButton size="small" onClick={() => increaseAttribute(a.key)} disabled={!canUp}
+                            sx={{ width: 32, height: 32, borderRadius: "8px", border: "1px solid rgba(255,255,255,0.08)", bgcolor: "rgba(255,255,255,0.03)", color: "rgba(255,255,255,0.55)", flexShrink: 0, "&:hover": { bgcolor: "rgba(120,85,255,0.15)", borderColor: "rgba(120,85,255,0.3)", color: "rgba(180,150,255,0.9)" }, "&.Mui-disabled": { opacity: 0.18 } }}>
+                            <AddRoundedIcon sx={{ fontSize: 16 }} />
+                          </IconButton>
+                        </Stack>
+                      </Box>
+                    );
+                  })}
+                </Stack>
+
+                {/* Criar */}
+                <Button onClick={handleSave} variant="contained" disabled={!canSave}
+                  sx={{ mt: 0.5, py: 1.35, borderRadius: "10px", textTransform: "none", fontWeight: 700, fontSize: 14.5, background: "linear-gradient(135deg, #7B54FF 0%, #5B8FFF 100%)", boxShadow: "0 6px 24px rgba(100,70,230,0.35)", "&:hover": { boxShadow: "0 10px 32px rgba(100,70,230,0.5)", transform: "translateY(-1px)" }, "&:active": { transform: "translateY(0)" }, "&.Mui-disabled": { background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.2)" } }}>
+                  {saving ? <CircularProgress size={18} sx={{ color: "rgba(255,255,255,0.5)" }} /> : "Criar Personagem"}
+                </Button>
+
+                <Button onClick={() => { setStep(3); setError(null); }}
                   startIcon={<ArrowBackRoundedIcon sx={{ fontSize: "16px !important" }} />}
                   sx={{ textTransform: "none", fontWeight: 600, fontSize: 13.5, color: "rgba(255,255,255,0.32)", borderRadius: "10px", "&:hover": { color: "rgba(255,255,255,0.6)", bgcolor: "rgba(255,255,255,0.04)" } }}>
                   Voltar
@@ -913,6 +1067,44 @@ export default function CreateCharacterPage() {
                 </Box>
               )}
 
+              {/* ── Proficiências ── */}
+              {detailClass.proficiencies && (() => {
+                const prof = detailClass.proficiencies!;
+                const groups = [
+                  { label: "Armaduras",            icon: "🛡️", items: prof.armor        },
+                  { label: "Armas",                 icon: "⚔️", items: prof.weapons      },
+                  { label: "Ferramentas",           icon: "🔧", items: prof.tools        },
+                  { label: "Testes de Resistência", icon: "🎯", items: prof.savingThrows },
+                ].filter((g) => g.items.length > 0);
+                if (groups.length === 0) return null;
+                return (
+                  <Box sx={{ px: 2.5, py: 1.5, borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                    <Typography sx={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(180,150,255,0.55)", mb: 1.25 }}>
+                      Proficiências
+                    </Typography>
+                    <Stack spacing={1.25}>
+                      {groups.map((g) => (
+                        <Box key={g.label}>
+                          <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 0.6 }}>
+                            <Typography sx={{ fontSize: 12, lineHeight: 1 }}>{g.icon}</Typography>
+                            <Typography sx={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)" }}>
+                              {g.label}
+                            </Typography>
+                          </Stack>
+                          <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.6 }}>
+                            {g.items.map((item) => (
+                              <Box key={item} sx={{ px: 1, py: 0.3, borderRadius: "7px", bgcolor: "rgba(120,85,255,0.1)", border: "1px solid rgba(120,85,255,0.22)" }}>
+                                <Typography sx={{ fontSize: 11.5, fontWeight: 600, color: "rgba(200,180,255,0.85)" }}>{item}</Typography>
+                              </Box>
+                            ))}
+                          </Box>
+                        </Box>
+                      ))}
+                    </Stack>
+                  </Box>
+                );
+              })()}
+
               {/* ── Features ── */}
               <Box sx={{ px: 2.5, py: 1.5, borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
                 <Typography sx={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(180,150,255,0.55)", mb: 1.25 }}>
@@ -1137,6 +1329,50 @@ export default function CreateCharacterPage() {
         <RollDialog open={healthOpen} onClose={() => setHealthOpen(false)} title="Rolar Vida" helperText="Role 1D20 ÷ 2 + 1D6 e insira o resultado (0–16)." value={tempRoll} onChange={setTempRoll} onConfirm={confirmHealthRoll} inputSx={{ mt: 0.5, ...inputSx }} />
 
       </Container>
+
+      {/* ── Floating points counter (portal to escape overflow:hidden) ── */}
+      {step === 4 && createPortal(
+        <Box sx={{
+          position: "fixed",
+          top: 60,
+          left: "50%",
+          transform: "translateX(-50%)",
+          zIndex: 1300,
+          pointerEvents: "none",
+        }}>
+          <Box sx={{
+            display: "flex", alignItems: "center", gap: 1,
+            px: 1.75, py: 0.8,
+            borderRadius: "99px",
+            bgcolor: pointsRemaining > 0 ? "rgba(10,8,20,0.93)" : "rgba(10,8,20,0.93)",
+            border: `1px solid ${pointsRemaining > 0 ? "rgba(120,85,255,0.45)" : "rgba(60,180,120,0.45)"}`,
+            boxShadow: pointsRemaining > 0
+              ? "0 4px 24px rgba(0,0,0,0.55), 0 0 12px rgba(120,85,255,0.18)"
+              : "0 4px 24px rgba(0,0,0,0.55), 0 0 12px rgba(60,200,130,0.18)",
+            backdropFilter: "blur(16px)",
+            transition: "border-color .3s, box-shadow .3s",
+          }}>
+            <PsychologyRoundedIcon sx={{
+              fontSize: 14,
+              color: pointsRemaining > 0 ? "rgba(180,150,255,0.9)" : "rgba(80,210,150,0.9)",
+              transition: "color .3s",
+            }} />
+            <Typography sx={{
+              fontSize: 12.5,
+              fontWeight: 800,
+              letterSpacing: "0.03em",
+              color: pointsRemaining > 0 ? "rgba(200,175,255,0.95)" : "rgba(100,230,170,0.95)",
+              transition: "color .3s",
+              whiteSpace: "nowrap",
+            }}>
+              {pointsRemaining > 0
+                ? `${pointsRemaining} ponto${pointsRemaining > 1 ? "s" : ""} para distribuir`
+                : "Atributos distribuídos ✓"}
+            </Typography>
+          </Box>
+        </Box>,
+        document.body
+      )}
     </Page>
   );
 }

@@ -21,14 +21,22 @@ export default function GrimorioPage() {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  const [classSpells, setClassSpells]     = useState<ClassSpellEntry[]>([]);
+  const [classSpells, setClassSpells]       = useState<ClassSpellEntry[]>([]);
   const [characterNivel, setCharacterNivel] = useState(1);
+  const [raceName, setRaceName]             = useState("");
+  const [subRaceName, setSubRaceName]       = useState("");
+  const [className, setClassName]           = useState("");
+  const [attributes, setAttributes]         = useState<Record<string, number>>({});
 
   useEffect(() => {
     if (!id) return;
     getCharacter(id).then((c) => {
       setCharacterNivel((c as any).nivel ?? 1);
       setClassSpells((c as any).dndClass?.classSpells ?? []);
+      setRaceName((c as any).race?.name ?? "");
+      setSubRaceName((c as any).subRace?.name ?? "");
+      setClassName((c as any).dndClass?.name ?? "");
+      setAttributes((c as any).idAttribute ?? (c as any).attributes ?? {});
     }).catch(() => {});
   }, [id]);
 
@@ -64,6 +72,10 @@ export default function GrimorioPage() {
                 characterId={id}
                 classSpells={classSpells}
                 characterNivel={characterNivel}
+                raceName={raceName}
+                subRaceName={subRaceName}
+                className={className}
+                attributes={attributes}
               />
             )}
           </Box>

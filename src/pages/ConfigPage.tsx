@@ -1,11 +1,57 @@
-import { Box, Container, Stack, Typography } from "@mui/material";
-import SettingsRoundedIcon from "@mui/icons-material/SettingsRounded";
-import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
-import { useNavigate } from "react-router-dom";
-import { BackButton, Glass, Noise, OrbSide, OrbTop, Page, PageLabel, PageTitle } from "./personagens/ViewCharacter.styles";
+import { useState } from "react";
+import {
+  Box,
+  Container,
+  Drawer,
+  IconButton,
+  List,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
+  Stack,
+  Typography,
+} from "@mui/material";
+import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
+import SportsMartialArtsRoundedIcon from "@mui/icons-material/SportsMartialArtsRounded";
+import HotelRoundedIcon from "@mui/icons-material/HotelRounded";
+import AutoStoriesRoundedIcon from "@mui/icons-material/AutoStoriesRounded";
+import { Glass, Noise, OrbSide, OrbTop, Page, PageLabel, PageTitle } from "./personagens/ViewCharacter.styles";
+import InitiativeManager from "./personagens/InitiativeManager";
+import RestManager from "./personagens/RestManager";
+import MasterGrimoire from "./personagens/MasterGrimoire";
+
+type Section = "initiative" | "rest" | "grimoire";
+
+const MENU_ITEMS: { id: Section; label: string; icon: React.ReactNode }[] = [
+  {
+    id: "initiative",
+    label: "Iniciativa",
+    icon: <SportsMartialArtsRoundedIcon sx={{ fontSize: 18 }} />,
+  },
+  {
+    id: "rest",
+    label: "Descanso",
+    icon: <HotelRoundedIcon sx={{ fontSize: 18 }} />,
+  },
+  {
+    id: "grimoire",
+    label: "Grimório",
+    icon: <AutoStoriesRoundedIcon sx={{ fontSize: 18 }} />,
+  },
+];
+
+function SectionContent({ section }: { section: Section }) {
+  if (section === "initiative") return <InitiativeManager />;
+  if (section === "rest")       return <RestManager />;
+  if (section === "grimoire")   return <MasterGrimoire />;
+  return null;
+}
 
 export default function ConfigPage() {
-  const navigate = useNavigate();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [activeSection, setActiveSection] = useState<Section>("initiative");
+
+  const activeItem = MENU_ITEMS.find((m) => m.id === activeSection)!;
 
   return (
     <Page>
@@ -13,56 +59,110 @@ export default function ConfigPage() {
       <OrbSide />
       <Noise />
 
+      {/* Sidebar drawer */}
+      <Drawer
+        anchor="left"
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        PaperProps={{
+          sx: {
+            width: 230,
+            bgcolor: "rgba(10, 8, 20, 0.97)",
+            borderRight: "1px solid rgba(255,255,255,0.07)",
+            backdropFilter: "blur(20px)",
+            pt: 2,
+          },
+        }}
+      >
+        <Typography sx={{
+          px: 2, pb: 1.5,
+          fontSize: 10, fontWeight: 800, letterSpacing: "0.12em",
+          textTransform: "uppercase", color: "rgba(255,255,255,0.25)",
+        }}>
+          Painel do Mestre
+        </Typography>
+
+        <List disablePadding>
+          {MENU_ITEMS.map((item) => {
+            const active = item.id === activeSection;
+            return (
+              <ListItemButton
+                key={item.id}
+                selected={active}
+                onClick={() => { setActiveSection(item.id); setDrawerOpen(false); }}
+                sx={{
+                  mx: 1, mb: 0.5,
+                  borderRadius: "12px",
+                  "&.Mui-selected": {
+                    bgcolor: "rgba(255,195,60,0.1)",
+                    "&:hover": { bgcolor: "rgba(255,195,60,0.14)" },
+                  },
+                  "&:hover": { bgcolor: "rgba(255,255,255,0.05)" },
+                }}
+              >
+                <ListItemIcon sx={{
+                  minWidth: 34,
+                  color: active ? "rgba(255,215,100,0.85)" : "rgba(255,255,255,0.35)",
+                }}>
+                  {item.icon}
+                </ListItemIcon>
+                <ListItemText
+                  primary={item.label}
+                  primaryTypographyProps={{
+                    fontSize: 13.5,
+                    fontWeight: active ? 800 : 600,
+                    color: active ? "rgba(255,230,130,0.95)" : "rgba(255,255,255,0.65)",
+                  }}
+                />
+              </ListItemButton>
+            );
+          })}
+        </List>
+      </Drawer>
+
       <Container maxWidth="sm" sx={{ pt: 2.5, px: 2, pb: 12 }}>
-        <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 3.5 }}>
+        {/* Header */}
+        <Stack direction="row" alignItems="flex-start" sx={{ mb: 3.5, gap: 1.5 }}>
+          <IconButton
+            onClick={() => setDrawerOpen(true)}
+            sx={{
+              mt: 0.25,
+              color: "rgba(255,255,255,0.55)",
+              bgcolor: "rgba(255,255,255,0.05)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              borderRadius: "10px",
+              width: 38, height: 38,
+              flexShrink: 0,
+              "&:hover": { bgcolor: "rgba(255,255,255,0.09)", color: "rgba(255,255,255,0.85)" },
+            }}
+          >
+            <MenuRoundedIcon sx={{ fontSize: 20 }} />
+          </IconButton>
           <Box>
             <PageLabel>Área restrita</PageLabel>
             <PageTitle>Configurações</PageTitle>
           </Box>
-          <BackButton
-            onClick={() => navigate(-1)}
-            startIcon={<ArrowBackRoundedIcon sx={{ fontSize: "15px !important" }} />}
-          >
-            Voltar
-          </BackButton>
         </Stack>
 
-        <Glass elevation={0}>
+        {/* Active section panel */}
+        <Glass elevation={0} sx={{ mb: 2 }}>
           <Box sx={{ p: { xs: 2, sm: 2.5 } }}>
-            <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 1 }}>
-              <Box
-                sx={{
-                  width: 36, height: 36, borderRadius: "10px",
-                  display: "grid", placeItems: "center",
-                  bgcolor: "rgba(120,85,255,0.12)",
-                  border: "1px solid rgba(120,85,255,0.22)",
-                }}
-              >
-                <SettingsRoundedIcon sx={{ fontSize: 18, color: "rgba(160,130,255,0.8)" }} />
+            <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+              <Box sx={{
+                width: 30, height: 30, borderRadius: "9px",
+                display: "grid", placeItems: "center",
+                bgcolor: "rgba(255,195,60,0.1)",
+                border: "1px solid rgba(255,195,60,0.2)",
+                color: "rgba(255,215,100,0.75)",
+              }}>
+                {activeItem.icon}
               </Box>
-              <Box>
-                <Typography sx={{ fontWeight: 800, fontSize: 14, color: "rgba(255,255,255,0.88)" }}>
-                  Painel do Mestre
-                </Typography>
-                <Typography sx={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>
-                  Configurações da sessão e da campanha
-                </Typography>
-              </Box>
+              <Typography sx={{ fontWeight: 800, fontSize: 14, color: "rgba(255,255,255,0.88)" }}>
+                {activeItem.label}
+              </Typography>
             </Stack>
 
-            <Box
-              sx={{
-                mt: 2, px: 2, py: 3,
-                borderRadius: "14px",
-                border: "1px dashed rgba(255,255,255,0.08)",
-                bgcolor: "rgba(255,255,255,0.02)",
-                textAlign: "center",
-              }}
-            >
-              <Typography sx={{ fontSize: 13, color: "rgba(255,255,255,0.3)", fontStyle: "italic" }}>
-                Em breve: gerenciamento de sessão, NPCs e lojas.
-              </Typography>
-            </Box>
+            <SectionContent section={activeSection} />
           </Box>
         </Glass>
       </Container>
