@@ -55,7 +55,7 @@ function BugCard({ report, onUpdated, onDeleted }: {
   async function saveResolution() {
     setSaving(true);
     try {
-      const updated = await updateBugReport(report.id, { resolution: resolution.trim() || null });
+      const updated = await updateBugReport(report.id, { resolution: resolution.trim() || undefined });
       onUpdated(updated);
     } finally { setSaving(false); }
   }

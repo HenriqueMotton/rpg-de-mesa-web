@@ -345,7 +345,7 @@ export default function InitiativeManager({ isMaster = false }: { isMaster?: boo
         name: r.name,
         initiative: Number(r.initiative) || 0,
         isMonster: true,
-        monsterId: r.monsterId,
+        monsterId: String(r.monsterId),
         monsterType: r.type,
         size: r.size,
         cr: r.cr,

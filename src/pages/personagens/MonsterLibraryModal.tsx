@@ -332,7 +332,7 @@ export default function MonsterLibraryModal({ open, isMaster = false, onClose, o
             <Stack direction="row" spacing={0.6} sx={{ overflowX: "auto", pb: 0.5, "&::-webkit-scrollbar": { display: "none" } }}>
               {MONSTER_TYPES.map((t) => (
                 <Chip
-                  key={t} onClick={() => setTypeFilter(t)} flexShrink={0}
+                  key={t} onClick={() => setTypeFilter(t)}
                   label={t === "Todos" ? t : `${typeIcon(t)} ${t}`}
                   size="small"
                   sx={{
