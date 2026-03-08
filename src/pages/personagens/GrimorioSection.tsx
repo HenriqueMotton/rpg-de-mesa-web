@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   Alert,
   Box,
@@ -6,6 +6,7 @@ import {
   Checkbox,
   CircularProgress,
   Chip,
+  Collapse,
   FormControlLabel,
   IconButton,
   MenuItem,
@@ -21,9 +22,11 @@ import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import AutoStoriesRoundedIcon from "@mui/icons-material/AutoStoriesRounded";
 import CollectionsBookmarkRoundedIcon from "@mui/icons-material/CollectionsBookmarkRounded";
+import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 
 import AppDialog, { AppDialogConfirmButton } from "../../components/ui/AppDialog";
+import { useCharactersStore } from "../../modules/characters/characters.store";
 import {
   SectionDivider,
   SectionIconBox,
@@ -40,7 +43,7 @@ import {
   type CharacterSpell,
 } from "../../modules/spells/spells.api";
 import type { ClassSpellEntry } from "../../modules/classes/classes.api";
-import { ALL_DND_SPELLS, type DndSpellData } from "../../modules/spells/dnd-spells.data";
+import { getDndSpells, type DndSpellData } from "../../modules/spells/spells.api";
 import {
   getClassProgression,
   expectedSpellCounts,
@@ -256,6 +259,7 @@ function groupByLevel(spells: CharacterSpell[]) {
 type View = "grimorio" | "catalogo" | "racial";
 
 export default function GrimorioSection({ characterId, classSpells = [], characterNivel = 1, raceName = "", subRaceName = "", className = "", attributes = {}, isMaster = false }: Props) {
+  const setSpellDeficit = useCharactersStore((s) => s.setSpellDeficit);
   const [view, setView] = useState<View>("grimorio");
   const [spells, setSpells] = useState<CharacterSpell[]>([]);
   const [loading, setLoading] = useState(true);
@@ -274,11 +278,20 @@ export default function GrimorioSection({ characterId, classSpells = [], charact
   const [form, setForm] = useState(EMPTY_FORM);
   const [formError, setFormError] = useState<string | null>(null);
 
+  const [expandedSpellId, setExpandedSpellId] = useState<number | null>(null);
+
   // ── Spell learning system ────────────────────────────────────────────────
   const [pickerOpen, setPickerOpen]   = useState(false);
   const [pickerSaving, setPickerSaving] = useState(false);
   const [prepOpen, setPrepOpen]       = useState(false);
   const [prepSaving, setPrepSaving]   = useState(false);
+  const [dndSpellCatalog, setDndSpellCatalog] = useState<DndSpellData[]>([]);
+
+  // Fetch DnD spell catalog from backend
+  useEffect(() => {
+    if (!className) return;
+    getDndSpells({ class: className }).then(setDndSpellCatalog).catch(() => {});
+  }, [className]);
 
   const load = useCallback(async () => {
     try {
@@ -643,8 +656,14 @@ export default function GrimorioSection({ characterId, classSpells = [], charact
   const ownedLeveled   = knownSpells.filter((s) => s.level > 0).length;
 
   const cantripDeficit = expected ? Math.max(0, expected.cantrips - ownedCantrips) : 0;
-  const leveledDeficit = expected && progression?.system === 'known' ? Math.max(0, expected.leveled - ownedLeveled) : 0;
+  const leveledDeficit = expected && (progression?.system === 'known' || progression?.system === 'grimoire')
+    ? Math.max(0, expected.leveled - ownedLeveled)
+    : 0;
   const needsSpellPick = cantripDeficit > 0 || leveledDeficit > 0;
+
+  useEffect(() => {
+    setSpellDeficit(needsSpellPick);
+  }, [needsSpellPick, setSpellDeficit]);
 
   // For prepared/grimoire: max prepared count
   const prepAttrMap: Record<string, string> = { int: 'inteligencia', sab: 'sabedoria', car: 'carisma' };
@@ -659,9 +678,7 @@ export default function GrimorioSection({ characterId, classSpells = [], charact
 
   // Available class spells for the preparation modal
   const classSpellsForPrep: DndSpellData[] = expected
-    ? ALL_DND_SPELLS.filter(
-        (s) => s.classes.includes(className) && (s.level === 0 || s.level <= expected.maxSpellLevel)
-      )
+    ? dndSpellCatalog.filter((s) => s.level === 0 || s.level <= expected.maxSpellLevel)
     : [];
 
   // Build picker target
@@ -694,15 +711,18 @@ export default function GrimorioSection({ characterId, classSpells = [], charact
     setPickerSaving(true);
     try {
       const payloads = selected.map((s) => ({
-        name: s.name, level: s.level, school: s.school,
-        castingTime: s.castingTime, range: s.range, duration: s.duration,
+        name: s.name, level: s.level, school: s.school ?? undefined,
+        castingTime: s.castingTime ?? undefined, range: s.range ?? undefined, duration: s.duration ?? undefined,
         componentV: s.componentV, componentS: s.componentS, componentM: s.componentM,
-        materialComponent: s.materialComponent, description: s.description,
+        materialComponent: s.materialComponent ?? undefined, description: s.description ?? undefined,
         prepared: true, isCustom: false,
       }));
       await bulkAddSpells(characterId, payloads);
       await load();
       setPickerOpen(false);
+    } catch (err) {
+      console.error("Erro ao salvar magias:", err);
+      setError("Não foi possível salvar as magias. Tente novamente.");
     } finally {
       setPickerSaving(false);
     }
@@ -737,6 +757,12 @@ export default function GrimorioSection({ characterId, classSpells = [], charact
       setPrepSaving(false);
     }
   }
+  function extractDice(description: string | null): string[] {
+    if (!description) return [];
+    const matches = description.match(/\d+d\d+/gi) ?? [];
+    return [...new Set(matches)];
+  }
+
   const lockedCatalog    = classSpells.filter((s) => s.unlockLevel > characterNivel);
   const catalogByLevel   = [...availableCatalog].sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
 
@@ -1215,134 +1241,231 @@ export default function GrimorioSection({ characterId, classSpells = [], charact
                   </Box>
 
                   <Stack spacing={0.75}>
-                    {list.map((spell) => (
-                      <Box
-                        key={spell.id}
-                        sx={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 1.25,
-                          pl: 1.5,
-                          pr: 0.75,
-                          py: 1,
-                          borderRadius: "13px",
-                          border: "1px solid rgba(255,255,255,0.06)",
-                          bgcolor: spell.prepared
-                            ? "rgba(120,85,255,0.06)"
-                            : "rgba(255,255,255,0.025)",
-                          transition: "all .15s",
-                          "&:hover": {
-                            bgcolor: spell.prepared
-                              ? "rgba(120,85,255,0.1)"
-                              : "rgba(255,255,255,0.04)",
-                            border: "1px solid rgba(255,255,255,0.1)",
-                          },
-                        }}
-                      >
+                    {list.map((spell) => {
+                      const isExpanded = expandedSpellId === spell.id;
+                      const dice = extractDice(spell.description);
+                      const components = [
+                        spell.componentV && "V",
+                        spell.componentS && "S",
+                        spell.componentM && "M",
+                      ].filter(Boolean).join(", ");
+                      return (
                         <Box
+                          key={spell.id}
                           sx={{
-                            width: 34,
-                            height: 34,
-                            borderRadius: "10px",
-                            display: "grid",
-                            placeItems: "center",
-                            bgcolor: lc.bg,
-                            border: `1px solid ${lc.border}`,
-                            fontSize: 16,
-                            flexShrink: 0,
+                            borderRadius: "13px",
+                            border: isExpanded
+                              ? "1px solid rgba(120,85,255,0.25)"
+                              : "1px solid rgba(255,255,255,0.06)",
+                            bgcolor: spell.prepared
+                              ? "rgba(120,85,255,0.06)"
+                              : "rgba(255,255,255,0.025)",
+                            overflow: "hidden",
+                            transition: "border-color .15s, background-color .15s",
                           }}
                         >
-                          {getSchoolIcon(spell.school)}
-                        </Box>
-
-                        <Box sx={{ flex: 1, minWidth: 0 }}>
-                          <Stack direction="row" alignItems="center" spacing={0.75}>
-                            <Typography
+                          {/* ── Linha clicável ── */}
+                          <Box
+                            onClick={() => setExpandedSpellId(isExpanded ? null : spell.id)}
+                            sx={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 1.25,
+                              pl: 1.5,
+                              pr: 0.75,
+                              py: 1,
+                              cursor: "pointer",
+                              "&:hover": {
+                                bgcolor: spell.prepared
+                                  ? "rgba(120,85,255,0.06)"
+                                  : "rgba(255,255,255,0.03)",
+                              },
+                            }}
+                          >
+                            <Box
                               sx={{
-                                fontWeight: 700,
-                                fontSize: 13.5,
-                                color: "rgba(255,255,255,0.88)",
-                                lineHeight: 1.2,
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
+                                width: 34,
+                                height: 34,
+                                borderRadius: "10px",
+                                display: "grid",
+                                placeItems: "center",
+                                bgcolor: lc.bg,
+                                border: `1px solid ${lc.border}`,
+                                fontSize: 16,
+                                flexShrink: 0,
                               }}
                             >
-                              {spell.name}
-                            </Typography>
-                            {spell.isRacial && (
-                              <Chip label="Racial" size="small" sx={{ height: 15, fontSize: 9, fontWeight: 800, bgcolor: "rgba(255,160,60,0.1)", color: "rgba(255,180,80,0.9)", border: "1px solid rgba(255,160,60,0.2)", "& .MuiChip-label": { px: 0.6 } }} />
-                            )}
-                            {!spell.isRacial && spell.prepared && level > 0 && (
-                              <Chip
-                                label="Preparada"
-                                size="small"
-                                sx={{
-                                  height: 16,
-                                  fontSize: 9.5,
-                                  fontWeight: 800,
-                                  bgcolor: "rgba(120,85,255,0.18)",
-                                  color: "rgba(180,150,255,0.9)",
-                                  border: "1px solid rgba(120,85,255,0.25)",
-                                  "& .MuiChip-label": { px: 0.75 },
-                                }}
-                              />
-                            )}
-                          </Stack>
-                          <Typography sx={{ fontSize: 11.5, color: "rgba(255,255,255,0.35)" }}>
-                            {spell.school ?? "—"}
-                            {spell.castingTime ? ` · ${spell.castingTime}` : ""}
-                          </Typography>
-                        </Box>
+                              {getSchoolIcon(spell.school)}
+                            </Box>
 
-                        {level > 0 && (
-                          <Tooltip title={spell.prepared ? "Desmarcar preparada" : "Marcar como preparada"} placement="top">
-                            <IconButton
-                              size="small"
-                              onClick={() => handleTogglePrepared(spell)}
+                            <Box sx={{ flex: 1, minWidth: 0 }}>
+                              <Stack direction="row" alignItems="center" spacing={0.75}>
+                                <Typography
+                                  sx={{
+                                    fontWeight: 700,
+                                    fontSize: 13.5,
+                                    color: "rgba(255,255,255,0.88)",
+                                    lineHeight: 1.2,
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap",
+                                  }}
+                                >
+                                  {spell.name}
+                                </Typography>
+                                {spell.isRacial && (
+                                  <Chip label="Racial" size="small" sx={{ height: 15, fontSize: 9, fontWeight: 800, bgcolor: "rgba(255,160,60,0.1)", color: "rgba(255,180,80,0.9)", border: "1px solid rgba(255,160,60,0.2)", "& .MuiChip-label": { px: 0.6 } }} />
+                                )}
+                                {!spell.isRacial && spell.prepared && level > 0 && (
+                                  <Chip
+                                    label="Preparada"
+                                    size="small"
+                                    sx={{
+                                      height: 16,
+                                      fontSize: 9.5,
+                                      fontWeight: 800,
+                                      bgcolor: "rgba(120,85,255,0.18)",
+                                      color: "rgba(180,150,255,0.9)",
+                                      border: "1px solid rgba(120,85,255,0.25)",
+                                      "& .MuiChip-label": { px: 0.75 },
+                                    }}
+                                  />
+                                )}
+                              </Stack>
+                              <Typography sx={{ fontSize: 11.5, color: "rgba(255,255,255,0.35)" }}>
+                                {spell.school ?? "—"}
+                                {spell.castingTime ? ` · ${spell.castingTime}` : ""}
+                              </Typography>
+                            </Box>
+
+                            {level > 0 && (
+                              <Tooltip title={spell.prepared ? "Desmarcar preparada" : "Marcar como preparada"} placement="top">
+                                <IconButton
+                                  size="small"
+                                  onClick={(e) => { e.stopPropagation(); handleTogglePrepared(spell); }}
+                                  sx={{
+                                    color: spell.prepared
+                                      ? "rgba(140,100,255,0.8)"
+                                      : "rgba(255,255,255,0.2)",
+                                    "&:hover": { color: "rgba(160,130,255,0.9)", bgcolor: "rgba(120,85,255,0.12)" },
+                                  }}
+                                >
+                                  <AutoStoriesRoundedIcon sx={{ fontSize: 15 }} />
+                                </IconButton>
+                              </Tooltip>
+                            )}
+
+                            {isMaster && (
+                              <>
+                                <Tooltip title="Editar" placement="top">
+                                  <IconButton
+                                    size="small"
+                                    onClick={(e) => { e.stopPropagation(); openEdit(spell); }}
+                                    sx={{
+                                      color: "rgba(160,130,255,0.5)",
+                                      "&:hover": { color: "rgba(160,130,255,0.9)", bgcolor: "rgba(120,85,255,0.12)" },
+                                    }}
+                                  >
+                                    <EditRoundedIcon sx={{ fontSize: 15 }} />
+                                  </IconButton>
+                                </Tooltip>
+
+                                <Tooltip title="Remover" placement="top">
+                                  <IconButton
+                                    size="small"
+                                    onClick={(e) => { e.stopPropagation(); setDeleteSpellItem(spell); }}
+                                    sx={{
+                                      color: "rgba(220,80,80,0.4)",
+                                      "&:hover": { color: "rgba(255,120,120,0.9)", bgcolor: "rgba(220,60,60,0.1)" },
+                                    }}
+                                  >
+                                    <DeleteOutlineRoundedIcon sx={{ fontSize: 15 }} />
+                                  </IconButton>
+                                </Tooltip>
+                              </>
+                            )}
+
+                            <ExpandMoreRoundedIcon
                               sx={{
-                                color: spell.prepared
-                                  ? "rgba(140,100,255,0.8)"
-                                  : "rgba(255,255,255,0.2)",
-                                "&:hover": { color: "rgba(160,130,255,0.9)", bgcolor: "rgba(120,85,255,0.12)" },
+                                fontSize: 16,
+                                color: "rgba(255,255,255,0.2)",
+                                flexShrink: 0,
+                                transition: "transform .2s",
+                                transform: isExpanded ? "rotate(180deg)" : "none",
                               }}
-                            >
-                              <AutoStoriesRoundedIcon sx={{ fontSize: 15 }} />
-                            </IconButton>
-                          </Tooltip>
-                        )}
+                            />
+                          </Box>
 
-                        {isMaster && (
-                          <>
-                            <Tooltip title="Editar" placement="top">
-                              <IconButton
-                                size="small"
-                                onClick={() => openEdit(spell)}
-                                sx={{
-                                  color: "rgba(160,130,255,0.5)",
-                                  "&:hover": { color: "rgba(160,130,255,0.9)", bgcolor: "rgba(120,85,255,0.12)" },
-                                }}
-                              >
-                                <EditRoundedIcon sx={{ fontSize: 15 }} />
-                              </IconButton>
-                            </Tooltip>
+                          {/* ── Painel de detalhes ── */}
+                          <Collapse in={isExpanded} timeout={180}>
+                            <Box sx={{ px: 1.5, pb: 1.5, borderTop: "1px solid rgba(255,255,255,0.05)" }}>
 
-                            <Tooltip title="Remover" placement="top">
-                              <IconButton
-                                size="small"
-                                onClick={() => setDeleteSpellItem(spell)}
-                                sx={{
-                                  color: "rgba(220,80,80,0.4)",
-                                  "&:hover": { color: "rgba(255,120,120,0.9)", bgcolor: "rgba(220,60,60,0.1)" },
-                                }}
-                              >
-                                <DeleteOutlineRoundedIcon sx={{ fontSize: 15 }} />
-                              </IconButton>
-                            </Tooltip>
-                          </>
-                        )}
-                      </Box>
-                    ))}
+                              {/* Stats grid */}
+                              <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0.75, mt: 1.25 }}>
+                                {[
+                                  { label: "Conjuração", value: spell.castingTime },
+                                  { label: "Alcance",    value: spell.range },
+                                  { label: "Duração",    value: spell.duration },
+                                  { label: "Componentes", value: components || "—" },
+                                ].map(({ label, value }) => value ? (
+                                  <Box key={label} sx={{ borderRadius: "8px", px: 1, py: 0.75, bgcolor: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                                    <Typography sx={{ fontSize: 9, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: "rgba(255,255,255,0.22)", mb: 0.2 }}>
+                                      {label}
+                                    </Typography>
+                                    <Typography sx={{ fontSize: 11.5, color: "rgba(255,255,255,0.7)", lineHeight: 1.3 }}>
+                                      {value}
+                                    </Typography>
+                                  </Box>
+                                ) : null)}
+                              </Box>
+
+                              {/* Material component */}
+                              {spell.componentM && spell.materialComponent && (
+                                <Box sx={{ mt: 0.75, borderRadius: "8px", px: 1, py: 0.75, bgcolor: "rgba(255,195,80,0.04)", border: "1px solid rgba(255,195,80,0.1)" }}>
+                                  <Typography sx={{ fontSize: 9, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: "rgba(255,195,80,0.4)", mb: 0.2 }}>
+                                    Material
+                                  </Typography>
+                                  <Typography sx={{ fontSize: 11.5, color: "rgba(255,215,120,0.7)", lineHeight: 1.4 }}>
+                                    {spell.materialComponent}
+                                  </Typography>
+                                </Box>
+                              )}
+
+                              {/* Dice badges */}
+                              {dice.length > 0 && (
+                                <Box sx={{ mt: 1, display: "flex", gap: 0.6, flexWrap: "wrap", alignItems: "center" }}>
+                                  <Typography sx={{ fontSize: 9.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.07em", color: "rgba(255,255,255,0.22)" }}>
+                                    Dado
+                                  </Typography>
+                                  {dice.map((d) => (
+                                    <Box
+                                      key={d}
+                                      sx={{
+                                        px: 1.1, py: 0.35,
+                                        borderRadius: "7px",
+                                        bgcolor: "rgba(255,160,60,0.12)",
+                                        border: "1px solid rgba(255,160,60,0.28)",
+                                      }}
+                                    >
+                                      <Typography sx={{ fontSize: 12, fontWeight: 900, color: "rgba(255,195,100,0.95)", fontFamily: "monospace" }}>
+                                        {d}
+                                      </Typography>
+                                    </Box>
+                                  ))}
+                                </Box>
+                              )}
+
+                              {/* Description */}
+                              {spell.description && (
+                                <Typography sx={{ mt: 1, fontSize: 12.5, color: "rgba(255,255,255,0.5)", lineHeight: 1.65 }}>
+                                  {spell.description}
+                                </Typography>
+                              )}
+                            </Box>
+                          </Collapse>
+                        </Box>
+                      );
+                    })}
                   </Stack>
                 </Box>
               );

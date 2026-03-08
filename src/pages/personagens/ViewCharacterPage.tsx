@@ -15,7 +15,8 @@ import {
   Typography,
 } from "@mui/material";
 
-import MonetizationOnRoundedIcon from "@mui/icons-material/MonetizationOnRounded";
+import AccountBalanceWalletRoundedIcon from "@mui/icons-material/AccountBalanceWalletRounded";
+import SwapHorizRoundedIcon from "@mui/icons-material/SwapHorizRounded";
 import FavoriteRoundedIcon from "@mui/icons-material/FavoriteRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
@@ -33,7 +34,6 @@ import {
   BackButton, LoadingBar, PageLabel, PageTitle,
   SectionDivider, SectionIconBox, SectionLabelText,
   HpBarOverlay, HpValueSub, HpValueText,
-  GoldAmount, GoldIconBox, GoldLabel, GoldPill,
   AttrGrid, AttrHint, AttrProgressTrack, AttrRangeLabel,
   SkillEmptyBox, SkillIconBox, SkillRow,
 } from "./ViewCharacter.styles";
@@ -43,10 +43,12 @@ import PendingChangesFab from "../../components/ui/PendingChangesFab";
 import {
   getCharacter,
   saveCharacter,
+  toggleFreeAttrEdit,
   uploadCharacterAvatar,
   removeCharacterAvatar,
   type Character,
 } from "../../modules/characters/characters.api";
+import { useAuthStore } from "../../modules/auth/auth.store";
 import { getInventory } from "../../modules/inventory/inventory.api";
 import SpellQuickPanel from "./SpellQuickPanel";
 import InitiativeWidget from "./InitiativeWidget";
@@ -87,6 +89,27 @@ const HIT_DICE_BY_CLASS: Record<string, number> = {
   "Monge": 8, "Paladino": 10, "Patrulheiro": 10,
 };
 
+const ASI_LEVELS_BY_CLASS: Record<string, number[]> = {
+  "Bárbaro":     [4, 8, 12, 16, 19],
+  "Bardo":       [4, 8, 12, 16, 19],
+  "Bruxo":       [4, 8, 12, 16, 19],
+  "Clérico":     [4, 8, 12, 16, 19],
+  "Druida":      [4, 8, 12, 16, 19],
+  "Feiticeiro":  [4, 8, 12, 16, 19],
+  "Guerreiro":   [4, 6, 8, 12, 14, 16, 19],
+  "Ladino":      [4, 8, 10, 12, 16, 19],
+  "Mago":        [4, 8, 12, 16, 19],
+  "Monge":       [4, 8, 12, 16, 19],
+  "Paladino":    [4, 8, 12, 16, 19],
+  "Patrulheiro": [4, 8, 12, 16, 19],
+};
+const DEFAULT_ASI_LEVELS = [4, 8, 12, 16, 19];
+
+function getAsiOpportunities(nivel: number, className: string): number {
+  const levels = ASI_LEVELS_BY_CLASS[className] ?? DEFAULT_ASI_LEVELS;
+  return levels.filter((l) => l <= nivel).length;
+}
+
 const RACE_ICON: Record<string, string> = {
   "Anão": "⛏️", "Elfo": "🌿", "Meio-Elfo": "🌟", "Humano": "🏛️",
   "Draconato": "🐉", "Gnomo": "⚙️", "Meio-Orc": "💪", "Hobbit": "🌻",
@@ -104,20 +127,24 @@ function getLevelFromXp(xp: number): number {
 }
 
 function fireLevelUpConfetti() {
+  // Use a dedicated canvas placed above MUI dialogs (z-index > 1300)
+  const canvas = document.createElement("canvas");
+  canvas.style.cssText =
+    "position:fixed;top:0;left:0;width:100%;height:100%;z-index:99999;pointer-events:none;";
+  document.body.appendChild(canvas);
+  const fire = confetti.create(canvas, { resize: true });
+
   const colors = ["#f0c020", "#7B54FF", "#5B8FFF", "#ff6b9d", "#ffffff", "#4ecdc4"];
   const base = { spread: 70, ticks: 120, gravity: 0.9, colors };
 
-  // left burst
-  confetti({ ...base, particleCount: 70, angle: 60, origin: { x: 0, y: 0.65 } });
-  // right burst
-  confetti({ ...base, particleCount: 70, angle: 120, origin: { x: 1, y: 0.65 } });
-  // center shower after short delay
+  fire({ ...base, particleCount: 70, angle: 60, origin: { x: 0, y: 0.65 } });
+  fire({ ...base, particleCount: 70, angle: 120, origin: { x: 1, y: 0.65 } });
   setTimeout(() => {
-    confetti({ ...base, particleCount: 100, angle: 90, spread: 100, origin: { x: 0.5, y: 0.4 } });
+    fire({ ...base, particleCount: 100, angle: 90, spread: 100, origin: { x: 0.5, y: 0.4 } });
   }, 180);
-  // final small burst
   setTimeout(() => {
-    confetti({ ...base, particleCount: 50, angle: 90, spread: 60, origin: { x: 0.5, y: 0.3 } });
+    fire({ ...base, particleCount: 50, angle: 90, spread: 60, origin: { x: 0.5, y: 0.3 } });
+    setTimeout(() => canvas.remove(), 4000);
   }, 420);
 }
 
@@ -178,8 +205,10 @@ function makeComparableState(c: any) {
   if (!c) return null;
   return {
     id: c.id, name: c.name,
-    money: Number(c.money ?? 0), health: Number(c.health ?? 0), maxHealth: Number(c.maxHealth ?? 0),
+    pp: Number(c.pp ?? 0), money: Number(c.money ?? 0), pl: Number(c.pl ?? 0),
+    health: Number(c.health ?? 0), maxHealth: Number(c.maxHealth ?? 0),
     xp: Number(c.xp ?? 0),
+    asiPointsUsed: Number(c.asiPointsUsed ?? 0),
     attrs: getAttrsFrom(c),
   };
 }
@@ -288,6 +317,7 @@ export default function ViewCharacterPage() {
   const navigate = useNavigate();
   const { id } = useParams();
   const setSelected = useCharactersStore((s) => s.setSelected);
+  const isMaster = useAuthStore((s) => s.isMaster);
 
   const [loading, setLoading] = useState(true);
   const [saving,  setSaving]  = useState(false);
@@ -298,13 +328,21 @@ export default function ViewCharacterPage() {
 
   const [invWeight,  setInvWeight]  = useState<{ total: number; capacity: number } | null>(null);
 
-  const [hpOpen,     setHpOpen]     = useState(false);
-  const [hpAction,   setHpAction]   = useState<HpAction>("damage");
-  const [hpAmount,   setHpAmount]   = useState("");
+  const [hpOpen,       setHpOpen]       = useState(false);
+  const [hpAction,     setHpAction]     = useState<HpAction>("damage");
+  const [hpAmount,     setHpAmount]     = useState("");
+  const [hpLevelUpOpen,      setHpLevelUpOpen]      = useState(false);
+  const [hpLevelUpRoll,      setHpLevelUpRoll]      = useState("");
+  const [asiGainedOnLevelUp, setAsiGainedOnLevelUp] = useState(0);
 
   const [goldOpen,   setGoldOpen]   = useState(false);
+  const [goldTab,    setGoldTab]    = useState<"ganhar" | "gastar" | "converter">("ganhar");
   const [goldAction, setGoldAction] = useState<"add" | "remove">("add");
-  const [goldAmount, setGoldAmount] = useState("");
+  const [goldPP,     setGoldPP]     = useState("");
+  const [goldPO,     setGoldPO]     = useState("");
+  const [goldPL,     setGoldPL]     = useState("");
+  const [cvtMode,    setCvtMode]    = useState<"po-pp" | "pl-po" | "pp-po" | "po-pl">("po-pp");
+  const [cvtQty,     setCvtQty]     = useState("");
 
   const [xpOpen,   setXpOpen]   = useState(false);
   const [xpAmount, setXpAmount] = useState("");
@@ -411,13 +449,48 @@ export default function ViewCharacterPage() {
     setDraft(updated);
   }
 
+  function spendAsiPoint(k: AttrKey) {
+    if (!draft) return;
+    const cur = getAttrsFrom(draft);
+    if (cur[k] >= 20) return;
+    const nivel = Number((draft as any).nivel ?? 1);
+    const className = (draft as any)?.dndClass?.name ?? "";
+    const earned = getAsiOpportunities(nivel, className) * 2;
+    const used = Number((draft as any).asiPointsUsed ?? 0);
+    if (used >= earned) return;
+    const next = cur[k] + 1;
+    let updated = withAttrs(draft, { ...cur, [k]: next });
+    if (k === "constituicao") {
+      const modDiff = getModifier(next) - getModifier(cur.constituicao);
+      if (modDiff !== 0) {
+        const newMaxHp = Math.max(1, (draft.maxHealth ?? 1) + modDiff * nivel);
+        const newHp = Math.min(draft.health ?? 0, newMaxHp);
+        updated = { ...updated, health: newHp, maxHealth: newMaxHp };
+      }
+    }
+    setDraft({ ...updated, asiPointsUsed: used + 1 } as any);
+  }
+
+  async function handleFreeAttrToggle() {
+    if (!draft) return;
+    const newVal = !(draft as any).freeAttrEdit;
+    try {
+      await toggleFreeAttrEdit(draft.id, newVal);
+      const updated = { ...draft, freeAttrEdit: newVal } as any;
+      setDraft(updated);
+      setOriginal(updated);
+    } catch {
+      setError("Não foi possível alterar o modo de edição.");
+    }
+  }
+
   async function handleSave() {
     if (!draft) return;
     setError(null); setSaving(true);
     try {
       await saveCharacter(draft);
       const fresh = await getCharacter(draft.id);
-      setOriginal(fresh); setDraft(fresh);
+      setOriginal(fresh); setDraft(fresh); setSelected(fresh);
     } catch (e: any) {
       setError(e?.response?.data?.message || "Não foi possível salvar as alterações.");
     } finally {
@@ -459,21 +532,59 @@ export default function ViewCharacterPage() {
     }
   }
 
-  function openGold(action: "add" | "remove") {
-    setError(null); setGoldAction(action); setGoldAmount(""); setGoldOpen(true);
+  function openGoldDialog(tab: "ganhar" | "gastar" | "converter" = "ganhar") {
+    setError(null);
+    setGoldTab(tab);
+    setGoldAction(tab === "gastar" ? "remove" : "add");
+    setGoldPP(""); setGoldPO(""); setGoldPL("");
+    setCvtQty(""); setCvtMode("po-pp");
+    setGoldOpen(true);
   }
 
   function applyGoldToDraft() {
     if (!draft) return;
     setError(null);
-    const v = parseInt(goldAmount, 10);
-    if (!Number.isFinite(v) || v <= 0) { setError("Informe um número válido maior que 0."); return; }
-    const current = Number(draft.money ?? 0);
-    const newMoney = goldAction === "add"
-      ? current + v
-      : Math.max(0, current - v);
-    setDraft({ ...draft, money: newMoney });
-    setGoldOpen(false); setGoldAmount("");
+    const pp = parseInt(goldPP, 10) || 0;
+    const po = parseInt(goldPO, 10) || 0;
+    const pl = parseInt(goldPL, 10) || 0;
+    if (pp === 0 && po === 0 && pl === 0) { setError("Informe ao menos um valor."); return; }
+    const sign = goldAction === "add" ? 1 : -1;
+    setDraft({
+      ...draft,
+      pp:    Math.max(0, Number(draft.pp    ?? 0) + sign * pp),
+      money: Math.max(0, Number(draft.money ?? 0) + sign * po),
+      pl:    Math.max(0, Number(draft.pl    ?? 0) + sign * pl),
+    });
+    setGoldOpen(false);
+    setGoldPP(""); setGoldPO(""); setGoldPL("");
+  }
+
+  function applyConversion() {
+    if (!draft) return;
+    setError(null);
+    const qty = parseInt(cvtQty, 10);
+    if (!Number.isFinite(qty) || qty < 1) { setError("Informe um valor válido maior que 0."); return; }
+    const pp = Number(draft.pp    ?? 0);
+    const po = Number(draft.money ?? 0);
+    const pl = Number(draft.pl    ?? 0);
+    let newPP = pp, newPO = po, newPL = pl;
+    if (cvtMode === "po-pp") {
+      if (po < qty) { setError(`Você só tem ${po} PO.`); return; }
+      newPO = po - qty; newPP = pp + qty * 10;
+    } else if (cvtMode === "pl-po") {
+      if (pl < qty) { setError(`Você só tem ${pl} PL.`); return; }
+      newPL = pl - qty; newPO = po + qty * 10;
+    } else if (cvtMode === "pp-po") {
+      const needed = qty * 10;
+      if (pp < needed) { setError(`Você precisa de ${needed} PP (você tem ${pp}).`); return; }
+      newPP = pp - needed; newPO = po + qty;
+    } else if (cvtMode === "po-pl") {
+      const needed = qty * 10;
+      if (po < needed) { setError(`Você precisa de ${needed} PO (você tem ${po}).`); return; }
+      newPO = po - needed; newPL = pl + qty;
+    }
+    setDraft({ ...draft, pp: newPP, money: newPO, pl: newPL });
+    setGoldOpen(false); setCvtQty("");
   }
 
   function applyXpToDraft() {
@@ -487,9 +598,30 @@ export default function ViewCharacterPage() {
     setDraft({ ...draft, xp: newXp, nivel: newNivel } as any);
     setXpOpen(false); setXpAmount("");
     if (newNivel > oldNivel) {
-      // pequeno delay para o dialog fechar antes de soltar os confetes
+      const className = (draft as any)?.dndClass?.name ?? "";
+      const asiGained = (getAsiOpportunities(newNivel, className) - getAsiOpportunities(oldNivel, className)) * 2;
+      setAsiGainedOnLevelUp(asiGained);
       setTimeout(fireLevelUpConfetti, 120);
+      setHpLevelUpRoll("");
+      setHpLevelUpOpen(true);
     }
+  }
+
+  function applyHpLevelUp() {
+    if (!draft) return;
+    setError(null);
+    const dieSize = HIT_DICE_BY_CLASS[(draft as any)?.dndClass?.name ?? ""] ?? 8;
+    const roll = parseInt(hpLevelUpRoll, 10);
+    if (!Number.isFinite(roll) || roll < 1 || roll > dieSize) {
+      setError(`Informe um número entre 1 e ${dieSize}.`);
+      return;
+    }
+    const conMod = getModifier(getAttrsFrom(draft).constituicao);
+    const hpGain = Math.max(1, roll + conMod);
+    const newMaxHp = (draft.maxHealth ?? 0) + hpGain;
+    setDraft({ ...draft, maxHealth: newMaxHp });
+    setHpLevelUpOpen(false);
+    setHpLevelUpRoll("");
   }
 
   return (
@@ -881,22 +1013,39 @@ export default function ViewCharacterPage() {
                 </Box>
 
 
-                {/* ── GOLD ───────────────────────────────────────── */}
-                <GoldPill
-                  onClick={() => openGold("add")}
-                  sx={{ cursor: "pointer", transition: "all .15s", "&:hover": { bgcolor: "rgba(255,195,70,0.11)", border: "1px solid rgba(255,195,70,0.26)" } }}
+                {/* ── MOEDAS ─────────────────────────────────────── */}
+                <Box
+                  onClick={() => openGoldDialog("ganhar")}
+                  sx={{
+                    display: "flex", alignItems: "center", gap: 1.5,
+                    px: 2, py: 1.5, borderRadius: "18px",
+                    border: "1px solid rgba(255,195,70,0.18)",
+                    bgcolor: "rgba(255,195,70,0.04)",
+                    cursor: "pointer", transition: "all .15s",
+                    "&:hover": { bgcolor: "rgba(255,195,70,0.09)", borderColor: "rgba(255,195,70,0.32)" },
+                  }}
                 >
-                  <GoldIconBox>
-                    <MonetizationOnRoundedIcon sx={{ fontSize: 18, color: "rgba(255,215,100,0.9)" }} />
-                  </GoldIconBox>
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <GoldLabel>Ouro</GoldLabel>
-                    <GoldAmount>
-                      {draft.money}
-                      <Typography component="span" sx={{ fontSize: 12, fontWeight: 600, opacity: 0.55, ml: 0.5 }}>moedas</Typography>
-                    </GoldAmount>
+                  <Box sx={{
+                    width: 42, height: 42, borderRadius: "13px", flexShrink: 0,
+                    bgcolor: "rgba(255,195,60,0.12)", border: "1px solid rgba(255,195,60,0.22)",
+                    display: "grid", placeItems: "center",
+                  }}>
+                    <AccountBalanceWalletRoundedIcon sx={{ fontSize: 20, color: "rgba(255,215,100,0.88)" }} />
                   </Box>
-                </GoldPill>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography sx={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,195,60,0.5)", lineHeight: 1, mb: 0.35 }}>
+                      Carteira
+                    </Typography>
+                    <Typography sx={{ fontSize: 13.5, fontWeight: 900, lineHeight: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      <Typography component="span" sx={{ color: "rgba(180,240,255,0.92)", fontWeight: 900 }}>{Number((draft as any).pl ?? 0)} PL</Typography>
+                      <Typography component="span" sx={{ color: "rgba(255,255,255,0.22)", mx: 0.6 }}>·</Typography>
+                      <Typography component="span" sx={{ color: "rgba(255,220,120,0.92)", fontWeight: 900 }}>{Number((draft as any).money ?? 0)} PO</Typography>
+                      <Typography component="span" sx={{ color: "rgba(255,255,255,0.22)", mx: 0.6 }}>·</Typography>
+                      <Typography component="span" sx={{ color: "rgba(200,215,235,0.85)", fontWeight: 900 }}>{Number((draft as any).pp ?? 0)} PP</Typography>
+                    </Typography>
+                  </Box>
+                  <AddRoundedIcon sx={{ fontSize: 16, color: "rgba(255,195,60,0.32)", flexShrink: 0 }} />
+                </Box>
 
                 {/* ── CARGA ──────────────────────────────────────── */}
                 {invWeight && (() => {
@@ -932,76 +1081,170 @@ export default function ViewCharacterPage() {
                 })()}
 
                 {/* ── ATTRIBUTES ─────────────────────────────────── */}
-                <Box>
-                  <SectionLabel icon="⚡" label="Atributos" />
+                {(() => {
+                  const nivel = Number((draft as any).nivel ?? 1);
+                  const className = (draft as any)?.dndClass?.name ?? "";
+                  const freeAttrEdit = !!(draft as any).freeAttrEdit;
+                  const showFreeEdit = isMaster || freeAttrEdit;
+                  const asiEarned = getAsiOpportunities(nivel, className) * 2;
+                  const asiUsed = Number((draft as any).asiPointsUsed ?? 0);
+                  const asiAvailable = asiEarned - asiUsed;
 
-                  <AttrGrid>
-                    {(Object.keys(attrs) as AttrKey[]).map((k) => {
-                      const v   = attrs[k];
-                      const mod = getModifier(v);
-                      const c   = ATTR_COLOR[k];
-                      const pct = ((v - ATTR_MIN) / (ATTR_MAX - ATTR_MIN)) * 100;
+                  return (
+                    <Box>
+                      {/* Section header */}
+                      <Stack direction="row" alignItems="center" sx={{ mb: 1.5 }}>
+                        <SectionIconBox>⚡</SectionIconBox>
+                        <SectionLabelText>Atributos</SectionLabelText>
+                        <SectionDivider />
+                        {/* Master toggle */}
+                        {isMaster && (
+                          <Box
+                            onClick={handleFreeAttrToggle}
+                            sx={{
+                              ml: 1, flexShrink: 0, px: 1.1, py: 0.35, borderRadius: "8px", cursor: "pointer",
+                              border: `1px solid ${freeAttrEdit ? "rgba(220,60,60,0.35)" : "rgba(120,85,255,0.28)"}`,
+                              bgcolor: freeAttrEdit ? "rgba(220,60,60,0.08)" : "rgba(120,85,255,0.08)",
+                              transition: "all .15s",
+                              "&:hover": { opacity: 0.8 },
+                            }}
+                          >
+                            <Typography sx={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.06em", color: freeAttrEdit ? "rgba(255,130,130,0.9)" : "rgba(160,130,255,0.9)" }}>
+                              {freeAttrEdit ? "🔓 Livre" : "🔒 ASI"}
+                            </Typography>
+                          </Box>
+                        )}
+                      </Stack>
 
-                      const ctrlBtnSx = (isDisabled: boolean) => ({
-                        width: 34, height: 34, borderRadius: "11px",
-                        border: `1px solid ${isDisabled ? "rgba(255,255,255,0.06)" : c.border}`,
-                        bgcolor: isDisabled ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.22)",
-                        color: isDisabled ? "rgba(255,255,255,0.14)" : c.accent,
-                        flexShrink: 0,
-                        opacity: isDisabled ? 0.5 : 1,
-                        transition: "transform .12s, background-color .12s",
-                        "&:hover": !isDisabled ? { bgcolor: "rgba(0,0,0,0.35)", transform: "scale(1.1)" } : {},
-                        "&:active": !isDisabled ? { transform: "scale(0.92)" } : {},
-                      });
-
-                      return (
-                        <Box key={k} sx={{
-                          borderRadius: "16px", border: `1px solid ${c.border}`, bgcolor: c.bg,
-                          px: 1.4, pt: 1.4, pb: 1.3,
-                          position: "relative", overflow: "hidden",
-                          transition: "box-shadow .2s",
-                          "&:hover": { boxShadow: `0 6px 22px ${c.glow}` },
+                      {/* ASI banner (player view, not free edit) */}
+                      {!showFreeEdit && asiEarned > 0 && (
+                        <Box sx={{
+                          mb: 1.5, px: 1.75, py: 1.1, borderRadius: "14px",
+                          bgcolor: asiAvailable > 0 ? "rgba(120,85,255,0.08)" : "rgba(255,255,255,0.03)",
+                          border: `1px solid ${asiAvailable > 0 ? "rgba(120,85,255,0.28)" : "rgba(255,255,255,0.07)"}`,
+                          display: "flex", alignItems: "center", gap: 1.5,
                         }}>
-                          {/* glow blob */}
-                          <Box sx={{ position: "absolute", top: -14, right: -14, width: 64, height: 64, borderRadius: "50%", bgcolor: c.glow, filter: "blur(20px)", pointerEvents: "none" }} />
-
-                          {/* icon + label + value */}
-                          <Stack direction="row" alignItems="flex-start" justifyContent="space-between" sx={{ mb: 1 }}>
-                            <Box>
-                              <Typography sx={{ fontSize: 18, lineHeight: 1, mb: 0.5 }}>{ATTR_ICON[k]}</Typography>
-                              <Typography sx={{ fontSize: 11.5, fontWeight: 800, color: "rgba(255,255,255,0.82)", lineHeight: 1.2 }}>{ATTR_LABEL[k]}</Typography>
-                              <Typography sx={{ fontSize: 10.5, color: "rgba(255,255,255,0.35)", mt: 0.2 }}>
-                                mod <Typography component="span" sx={{ fontWeight: 800, color: c.accent, fontSize: 10.5 }}>{fmtMod(mod)}</Typography>
-                              </Typography>
+                          <Box sx={{
+                            width: 36, height: 36, borderRadius: "10px", flexShrink: 0,
+                            bgcolor: asiAvailable > 0 ? "rgba(120,85,255,0.18)" : "rgba(255,255,255,0.06)",
+                            border: `1px solid ${asiAvailable > 0 ? "rgba(120,85,255,0.35)" : "rgba(255,255,255,0.08)"}`,
+                            display: "grid", placeItems: "center",
+                          }}>
+                            <Typography sx={{ fontSize: 17, lineHeight: 1 }}>⬆️</Typography>
+                          </Box>
+                          <Box sx={{ flex: 1, minWidth: 0 }}>
+                            <Typography sx={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: asiAvailable > 0 ? "rgba(160,130,255,0.7)" : "rgba(255,255,255,0.25)", lineHeight: 1, mb: 0.3 }}>
+                              Ability Score Improvement
+                            </Typography>
+                            <Typography sx={{ fontSize: 13, fontWeight: 900, color: asiAvailable > 0 ? "rgba(200,175,255,0.95)" : "rgba(255,255,255,0.35)", lineHeight: 1 }}>
+                              {asiAvailable > 0
+                                ? `${asiAvailable} ponto${asiAvailable > 1 ? "s" : ""} disponíve${asiAvailable > 1 ? "is" : "l"}`
+                                : "Nenhum ponto disponível"}
+                            </Typography>
+                          </Box>
+                          {asiAvailable > 0 && (
+                            <Box sx={{ textAlign: "right", flexShrink: 0 }}>
+                              <Typography sx={{ fontSize: 22, fontWeight: 900, color: "rgba(175,150,255,0.95)", lineHeight: 1 }}>{asiAvailable}</Typography>
+                              <Typography sx={{ fontSize: 9, color: "rgba(255,255,255,0.3)", fontWeight: 700 }}>/ {asiEarned}</Typography>
                             </Box>
-                            <Box sx={{ textAlign: "right" }}>
-                              <Typography sx={{ fontSize: 30, fontWeight: 900, color: c.accent, lineHeight: 1 }}>{v}</Typography>
-                              <Typography sx={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.12em", color: c.accent, opacity: 0.6 }}>{ATTR_BADGE[k]}</Typography>
-                            </Box>
-                          </Stack>
-
-                          {/* progress */}
-                          <AttrProgressTrack>
-                            <Box sx={{ height: "100%", width: `${pct}%`, background: c.accent, borderRadius: 99, opacity: 0.75, transition: "width .2s ease" }} />
-                          </AttrProgressTrack>
-
-                          {/* controls */}
-                          <Stack direction="row" alignItems="center" justifyContent="space-between">
-                            <LongPressButton onAction={() => changeAttribute(k, -1)} disabled={saving || v <= ATTR_MIN} sx={ctrlBtnSx(saving || v <= ATTR_MIN)}>
-                              <RemoveRoundedIcon sx={{ fontSize: 16 }} />
-                            </LongPressButton>
-
-                            <AttrRangeLabel>{ATTR_MIN} – {ATTR_MAX}</AttrRangeLabel>
-
-                            <LongPressButton onAction={() => changeAttribute(k, 1)} disabled={saving || v >= ATTR_MAX} sx={ctrlBtnSx(saving || v >= ATTR_MAX)}>
-                              <AddRoundedIcon sx={{ fontSize: 16 }} />
-                            </LongPressButton>
-                          </Stack>
+                          )}
                         </Box>
-                      );
-                    })}
-                  </AttrGrid>
-                </Box>
+                      )}
+
+                      <AttrGrid>
+                        {(Object.keys(attrs) as AttrKey[]).map((k) => {
+                          const v   = attrs[k];
+                          const mod = getModifier(v);
+                          const c   = ATTR_COLOR[k];
+                          const pct = ((v - ATTR_MIN) / (ATTR_MAX - ATTR_MIN)) * 100;
+                          const canSpendAsi = !showFreeEdit && asiAvailable > 0 && v < 20;
+
+                          const ctrlBtnSx = (isDisabled: boolean) => ({
+                            width: 34, height: 34, borderRadius: "11px",
+                            border: `1px solid ${isDisabled ? "rgba(255,255,255,0.06)" : c.border}`,
+                            bgcolor: isDisabled ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.22)",
+                            color: isDisabled ? "rgba(255,255,255,0.14)" : c.accent,
+                            flexShrink: 0,
+                            opacity: isDisabled ? 0.5 : 1,
+                            transition: "transform .12s, background-color .12s",
+                            "&:hover": !isDisabled ? { bgcolor: "rgba(0,0,0,0.35)", transform: "scale(1.1)" } : {},
+                            "&:active": !isDisabled ? { transform: "scale(0.92)" } : {},
+                          });
+
+                          return (
+                            <Box key={k} sx={{
+                              borderRadius: "16px", border: `1px solid ${c.border}`, bgcolor: c.bg,
+                              px: 1.4, pt: 1.4, pb: 1.3,
+                              position: "relative", overflow: "hidden",
+                              transition: "box-shadow .2s",
+                              "&:hover": { boxShadow: `0 6px 22px ${c.glow}` },
+                            }}>
+                              {/* glow blob */}
+                              <Box sx={{ position: "absolute", top: -14, right: -14, width: 64, height: 64, borderRadius: "50%", bgcolor: c.glow, filter: "blur(20px)", pointerEvents: "none" }} />
+
+                              {/* icon + label + value */}
+                              <Stack direction="row" alignItems="flex-start" justifyContent="space-between" sx={{ mb: 1 }}>
+                                <Box>
+                                  <Typography sx={{ fontSize: 18, lineHeight: 1, mb: 0.5 }}>{ATTR_ICON[k]}</Typography>
+                                  <Typography sx={{ fontSize: 11.5, fontWeight: 800, color: "rgba(255,255,255,0.82)", lineHeight: 1.2 }}>{ATTR_LABEL[k]}</Typography>
+                                  <Typography sx={{ fontSize: 10.5, color: "rgba(255,255,255,0.35)", mt: 0.2 }}>
+                                    mod <Typography component="span" sx={{ fontWeight: 800, color: c.accent, fontSize: 10.5 }}>{fmtMod(mod)}</Typography>
+                                  </Typography>
+                                </Box>
+                                <Box sx={{ textAlign: "right" }}>
+                                  <Typography sx={{ fontSize: 30, fontWeight: 900, color: c.accent, lineHeight: 1 }}>{v}</Typography>
+                                  <Typography sx={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.12em", color: c.accent, opacity: 0.6 }}>{ATTR_BADGE[k]}</Typography>
+                                </Box>
+                              </Stack>
+
+                              {/* progress */}
+                              <AttrProgressTrack>
+                                <Box sx={{ height: "100%", width: `${pct}%`, background: c.accent, borderRadius: 99, opacity: 0.75, transition: "width .2s ease" }} />
+                              </AttrProgressTrack>
+
+                              {/* controls */}
+                              {showFreeEdit ? (
+                                <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mt: 1 }}>
+                                  <LongPressButton onAction={() => changeAttribute(k, -1)} disabled={saving || v <= ATTR_MIN} sx={ctrlBtnSx(saving || v <= ATTR_MIN)}>
+                                    <RemoveRoundedIcon sx={{ fontSize: 16 }} />
+                                  </LongPressButton>
+                                  <AttrRangeLabel>{ATTR_MIN} – {ATTR_MAX}</AttrRangeLabel>
+                                  <LongPressButton onAction={() => changeAttribute(k, 1)} disabled={saving || v >= ATTR_MAX} sx={ctrlBtnSx(saving || v >= ATTR_MAX)}>
+                                    <AddRoundedIcon sx={{ fontSize: 16 }} />
+                                  </LongPressButton>
+                                </Stack>
+                              ) : canSpendAsi ? (
+                                <Box
+                                  onClick={() => !saving && spendAsiPoint(k)}
+                                  sx={{
+                                    mt: 1, width: "100%", py: 0.6, borderRadius: "10px", cursor: saving ? "default" : "pointer",
+                                    border: "1px solid rgba(120,85,255,0.35)",
+                                    bgcolor: "rgba(120,85,255,0.1)",
+                                    display: "flex", alignItems: "center", justifyContent: "center", gap: 0.5,
+                                    transition: "all .12s",
+                                    "&:hover": { bgcolor: "rgba(120,85,255,0.2)", borderColor: "rgba(120,85,255,0.5)" },
+                                    "&:active": { transform: "scale(0.97)" },
+                                  }}
+                                >
+                                  <AddRoundedIcon sx={{ fontSize: 13, color: "rgba(175,150,255,0.9)" }} />
+                                  <Typography sx={{ fontSize: 11, fontWeight: 800, color: "rgba(175,150,255,0.9)", letterSpacing: "0.04em" }}>
+                                    +1 ASI
+                                  </Typography>
+                                </Box>
+                              ) : (
+                                <Box sx={{ mt: 1, height: 28, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                  <Typography sx={{ fontSize: 10, color: "rgba(255,255,255,0.18)", fontWeight: 600 }}>
+                                    {v >= 20 ? "máximo" : ""}
+                                  </Typography>
+                                </Box>
+                              )}
+                            </Box>
+                          );
+                        })}
+                      </AttrGrid>
+                    </Box>
+                  );
+                })()}
 
                 {/* ── SKILLS ─────────────────────────────────────── */}
                 <Box>
@@ -1081,90 +1324,174 @@ export default function ViewCharacterPage() {
       {/* ── GOLD DIALOG ──────────────────────────────────────────────────────── */}
       <AppDialog
         open={goldOpen}
-        onClose={() => setGoldOpen(false)}
-        title="Editar Ouro"
+        onClose={() => { setGoldOpen(false); setError(null); }}
+        title="Carteira"
         dividers
         actions={
           <Stack direction="row" spacing={1} sx={{ width: "100%" }}>
-            <Button onClick={() => setGoldOpen(false)} variant="text" startIcon={<CloseRoundedIcon />}
+            <Button onClick={() => { setGoldOpen(false); setError(null); }} variant="text" startIcon={<CloseRoundedIcon />}
               sx={{ textTransform: "none", fontWeight: 800, borderRadius: "12px", color: "rgba(255,255,255,0.3)", "&:hover": { bgcolor: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.6)" } }}
             >
               Cancelar
             </Button>
             <Box sx={{ flex: 1 }} />
-            <AppDialogConfirmButton onClick={applyGoldToDraft} sx={{ px: 4, py: 1.2, borderRadius: "12px" }}>
-              Aplicar
+            <AppDialogConfirmButton
+              onClick={goldTab === "converter" ? applyConversion : applyGoldToDraft}
+              sx={{ px: 4, py: 1.2, borderRadius: "12px" }}
+            >
+              {goldTab === "converter" ? "Converter" : "Aplicar"}
             </AppDialogConfirmButton>
           </Stack>
         }
       >
         <Stack spacing={2}>
-          {/* current balance */}
-          <Box sx={{ px: 1.5, py: 1.2, borderRadius: "12px", bgcolor: "rgba(255,195,70,0.07)", border: "1px solid rgba(255,195,70,0.16)", display: "flex", alignItems: "center", gap: 1.2 }}>
-            <MonetizationOnRoundedIcon sx={{ fontSize: 16, color: "rgba(255,215,100,0.7)" }} />
-            <Typography sx={{ fontSize: 13, color: "rgba(255,215,100,0.85)", fontWeight: 700 }}>
-              Saldo atual:{" "}
-              <Typography component="span" sx={{ fontWeight: 900, fontSize: 14 }}>
-                {draft?.money ?? 0} moedas
-              </Typography>
-            </Typography>
-          </Box>
-
-          {/* add / remove toggle */}
-          <Stack direction="row" spacing={1}>
-            {([
-              { value: "add"    as const, label: "Adicionar", bc: "rgba(75,175,130,0.28)",  bg: "rgba(75,175,130,0.08)",  color: "rgba(130,230,180,0.95)", hbc: "rgba(75,175,130,0.45)",  hbg: "rgba(75,175,130,0.14)" },
-              { value: "remove" as const, label: "Remover",   bc: "rgba(220,60,60,0.25)",   bg: "rgba(220,60,60,0.07)",   color: "rgba(255,170,170,0.9)",  hbc: "rgba(220,60,60,0.38)",   hbg: "rgba(220,60,60,0.12)"  },
-            ]).map(({ value, label, bc, bg, color, hbc, hbg }) => (
-              <Button
-                key={value}
-                fullWidth
-                onClick={() => setGoldAction(value)}
-                variant="outlined"
-                sx={{
-                  borderRadius: "12px", py: 1, textTransform: "none", fontWeight: 800, fontSize: 13,
-                  borderColor: goldAction === value ? hbc : bc,
-                  bgcolor: goldAction === value ? hbg : "transparent",
-                  color,
-                  boxShadow: goldAction === value ? `0 0 0 1px ${hbc} inset` : "none",
-                  "&:hover": { bgcolor: hbg, borderColor: hbc },
-                }}
-              >
-                {label}
-              </Button>
+          {/* Saldo atual */}
+          <Stack direction="row" spacing={1} justifyContent="center">
+            {[
+              { label: "PL", value: Number((draft as any)?.pl    ?? 0), color: "rgba(180,240,255,0.92)" },
+              { label: "PO", value: Number((draft as any)?.money ?? 0), color: "rgba(255,220,120,0.92)" },
+              { label: "PP", value: Number((draft as any)?.pp    ?? 0), color: "rgba(200,215,235,0.85)" },
+            ].map(({ label, value, color }) => (
+              <Box key={label} sx={{ flex: 1, textAlign: "center", px: 1, py: 0.9, borderRadius: "12px", bgcolor: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                <Typography sx={{ fontSize: 18, fontWeight: 900, color, lineHeight: 1 }}>{value}</Typography>
+                <Typography sx={{ fontSize: 10, fontWeight: 800, color: "rgba(255,255,255,0.3)", mt: 0.2 }}>{label}</Typography>
+              </Box>
             ))}
           </Stack>
 
-          <TextField
-            label="Quantidade"
-            value={goldAmount}
-            onChange={(e) => setGoldAmount(e.target.value.replace(/\D/g, ""))}
-            fullWidth
-            type="number"
-            inputProps={{ min: 1, step: 1 }}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <MonetizationOnRoundedIcon sx={{ fontSize: 18, color: "rgba(255,195,70,0.5)" }} />
-                </InputAdornment>
-              ),
-            }}
-            sx={inputSx}
-          />
+          {/* Tabs: Ganhar / Gastar / Converter */}
+          <Stack direction="row" spacing={0.75}>
+            {([
+              { tab: "ganhar"    as const, label: "Ganhar",    bc: "rgba(75,175,130,0.3)",  bg: "rgba(75,175,130,0.12)",  color: "rgba(130,230,180,0.95)" },
+              { tab: "gastar"    as const, label: "Gastar",    bc: "rgba(220,60,60,0.28)",  bg: "rgba(220,60,60,0.1)",    color: "rgba(255,170,170,0.9)"  },
+              { tab: "converter" as const, label: "Converter", bc: "rgba(120,85,255,0.3)",  bg: "rgba(120,85,255,0.1)",   color: "rgba(175,150,255,0.95)" },
+            ]).map(({ tab, label, bc, bg, color }) => {
+              const active = goldTab === tab;
+              return (
+                <Button key={tab} fullWidth onClick={() => {
+                  setGoldTab(tab);
+                  if (tab !== "converter") setGoldAction(tab === "gastar" ? "remove" : "add");
+                  setError(null);
+                }} variant="outlined"
+                  sx={{ borderRadius: "10px", py: 0.85, textTransform: "none", fontWeight: 800, fontSize: 12.5,
+                    borderColor: active ? bc : "rgba(255,255,255,0.08)", bgcolor: active ? bg : "transparent",
+                    color: active ? color : "rgba(255,255,255,0.3)",
+                    "&:hover": { bgcolor: bg, borderColor: bc, color } }}
+                >{label}</Button>
+              );
+            })}
+          </Stack>
 
-          {/* preview */}
-          {goldAmount !== "" && Number(goldAmount) > 0 && (
-            <Box sx={{ px: 1.5, py: 1, borderRadius: "10px", bgcolor: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
-              <Typography sx={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>
-                Resultado:{" "}
-                <Typography component="span" sx={{ fontWeight: 900, fontSize: 13, color: "rgba(255,220,130,0.9)" }}>
-                  {goldAction === "add"
-                    ? (Number(draft?.money ?? 0) + Number(goldAmount))
-                    : Math.max(0, Number(draft?.money ?? 0) - Number(goldAmount))
-                  } moedas
-                </Typography>
+          {/* GANHAR / GASTAR */}
+          {goldTab !== "converter" && ([
+            { label: "Prata (PP)",   value: goldPP,  set: setGoldPP,  cur: Number((draft as any)?.pp    ?? 0), color: "rgba(200,215,235,0.85)", icon: "🥈" },
+            { label: "Ouro (PO)",    value: goldPO,  set: setGoldPO,  cur: Number((draft as any)?.money ?? 0), color: "rgba(255,220,120,0.92)", icon: "🥇" },
+            { label: "Platina (PL)", value: goldPL,  set: setGoldPL,  cur: Number((draft as any)?.pl    ?? 0), color: "rgba(180,240,255,0.92)", icon: "💎" },
+          ].map(({ label, value, set, cur, color, icon }) => {
+            const delta = parseInt(value, 10) || 0;
+            const after = goldTab === "ganhar" ? cur + delta : Math.max(0, cur - delta);
+            return (
+              <Box key={label}>
+                <Stack direction="row" alignItems="center" spacing={0.8} sx={{ mb: 0.6 }}>
+                  <Typography sx={{ fontSize: 14, lineHeight: 1 }}>{icon}</Typography>
+                  <Typography sx={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.45)" }}>{label}</Typography>
+                  <Typography sx={{ fontSize: 11.5, color: "rgba(255,255,255,0.22)", ml: "auto !important" }}>
+                    atual: <b style={{ color }}>{cur}</b>
+                  </Typography>
+                </Stack>
+                <TextField
+                  value={value}
+                  onChange={(e) => set(e.target.value.replace(/\D/g, ""))}
+                  placeholder="0"
+                  inputMode="numeric"
+                  fullWidth
+                  sx={inputSx}
+                />
+                {delta > 0 && (
+                  <Typography sx={{ fontSize: 11.5, color: "rgba(255,255,255,0.3)", mt: 0.5, pl: 0.5 }}>
+                    → <b style={{ color }}>{after}</b> {label.split(" ")[0].toLowerCase()}
+                  </Typography>
+                )}
+              </Box>
+            );
+          }))}
+
+          {/* CONVERTER */}
+          {goldTab === "converter" && (
+            <Stack spacing={1.75}>
+              <Typography sx={{ fontSize: 12, color: "rgba(255,255,255,0.35)", lineHeight: 1.5 }}>
+                Escolha o tipo de conversão e informe a quantidade.
               </Typography>
-            </Box>
+              {/* 4 opções de conversão */}
+              <Stack spacing={0.75}>
+                {([
+                  { mode: "po-pp" as const, from: "PO", to: "PP", rate: "1 PO → 10 PP", label: "Fragmentar Ouro",    desc: "trocar ouro por prata" },
+                  { mode: "pl-po" as const, from: "PL", to: "PO", rate: "1 PL → 10 PO", label: "Fragmentar Platina", desc: "trocar platina por ouro" },
+                  { mode: "pp-po" as const, from: "PP", to: "PO", rate: "10 PP → 1 PO", label: "Consolidar Prata",   desc: "fundir prata em ouro" },
+                  { mode: "po-pl" as const, from: "PO", to: "PL", rate: "10 PO → 1 PL", label: "Consolidar Ouro",   desc: "fundir ouro em platina" },
+                ] as { mode: "po-pp" | "pl-po" | "pp-po" | "po-pl"; from: string; to: string; rate: string; label: string; desc: string }[]).map(({ mode, rate, label, desc }) => {
+                  const active = cvtMode === mode;
+                  return (
+                    <Box key={mode} onClick={() => { setCvtMode(mode); setError(null); setCvtQty(""); }}
+                      sx={{
+                        px: 1.5, py: 1, borderRadius: "12px", cursor: "pointer",
+                        border: `1px solid ${active ? "rgba(120,85,255,0.4)" : "rgba(255,255,255,0.07)"}`,
+                        bgcolor: active ? "rgba(120,85,255,0.1)" : "rgba(255,255,255,0.03)",
+                        transition: "all .12s",
+                        "&:hover": { bgcolor: "rgba(120,85,255,0.08)", borderColor: "rgba(120,85,255,0.3)" },
+                      }}
+                    >
+                      <Stack direction="row" alignItems="center" justifyContent="space-between">
+                        <Box>
+                          <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: active ? "rgba(180,155,255,0.95)" : "rgba(255,255,255,0.6)", lineHeight: 1 }}>{label}</Typography>
+                          <Typography sx={{ fontSize: 11, color: "rgba(255,255,255,0.3)", mt: 0.2 }}>{desc}</Typography>
+                        </Box>
+                        <Box sx={{ px: 1, py: 0.35, borderRadius: "8px", bgcolor: active ? "rgba(120,85,255,0.18)" : "rgba(255,255,255,0.05)", border: `1px solid ${active ? "rgba(120,85,255,0.35)" : "rgba(255,255,255,0.08)"}` }}>
+                          <Typography sx={{ fontSize: 11, fontWeight: 800, color: active ? "rgba(175,150,255,0.9)" : "rgba(255,255,255,0.35)", whiteSpace: "nowrap" }}>{rate}</Typography>
+                        </Box>
+                      </Stack>
+                    </Box>
+                  );
+                })}
+              </Stack>
+
+              {/* Quantidade */}
+              <Box>
+                <Typography sx={{ fontSize: 11.5, color: "rgba(255,255,255,0.35)", mb: 0.75 }}>
+                  Quantidade a converter{" "}
+                  <Typography component="span" sx={{ color: "rgba(175,150,255,0.7)", fontWeight: 700 }}>
+                    ({cvtMode === "po-pp" ? "de PO" : cvtMode === "pl-po" ? "de PL" : cvtMode === "pp-po" ? "de dezenas de PP" : "de dezenas de PO"})
+                  </Typography>
+                </Typography>
+                <TextField
+                  value={cvtQty}
+                  onChange={(e) => { setCvtQty(e.target.value.replace(/\D/g, "")); setError(null); }}
+                  placeholder="0"
+                  inputMode="numeric"
+                  fullWidth
+                  InputProps={{ startAdornment: <InputAdornment position="start"><SwapHorizRoundedIcon /></InputAdornment> }}
+                  sx={inputSx}
+                />
+                {(() => {
+                  const qty = parseInt(cvtQty, 10);
+                  if (!Number.isFinite(qty) || qty < 1) return null;
+                  let fromStr = "", toStr = "";
+                  if (cvtMode === "po-pp") { fromStr = `${qty} PO`; toStr = `${qty * 10} PP`; }
+                  else if (cvtMode === "pl-po") { fromStr = `${qty} PL`; toStr = `${qty * 10} PO`; }
+                  else if (cvtMode === "pp-po") { fromStr = `${qty * 10} PP`; toStr = `${qty} PO`; }
+                  else if (cvtMode === "po-pl") { fromStr = `${qty * 10} PO`; toStr = `${qty} PL`; }
+                  return (
+                    <Typography sx={{ fontSize: 11.5, color: "rgba(255,255,255,0.3)", mt: 0.6, pl: 0.5 }}>
+                      Gastar <b style={{ color: "rgba(255,200,100,0.85)" }}>{fromStr}</b>{" "}→ receber <b style={{ color: "rgba(130,230,180,0.9)" }}>{toStr}</b>
+                    </Typography>
+                  );
+                })()}
+              </Box>
+            </Stack>
+          )}
+
+          {error && (
+            <Typography sx={{ fontSize: 12, color: "rgba(255,100,100,0.8)", fontWeight: 600 }}>{error}</Typography>
           )}
         </Stack>
       </AppDialog>
@@ -1244,6 +1571,122 @@ export default function ViewCharacterPage() {
           })()}
         </Stack>
       </AppDialog>
+
+      {/* ── LEVEL-UP HP DIALOG ───────────────────────────────────────────── */}
+      {(() => {
+        const dieSize = HIT_DICE_BY_CLASS[(draft as any)?.dndClass?.name ?? ""] ?? 8;
+        const conMod  = draft ? getModifier(getAttrsFrom(draft).constituicao) : 0;
+        const roll    = parseInt(hpLevelUpRoll, 10);
+        const preview = !Number.isNaN(roll) && roll >= 1 && roll <= dieSize;
+        const nivel   = (draft as any)?.nivel ?? 1;
+        return (
+          <AppDialog
+            open={hpLevelUpOpen}
+            onClose={() => setHpLevelUpOpen(false)}
+            title="Subiu de Nível! 🎉"
+            dividers
+            actions={
+              <Stack direction="row" spacing={1} sx={{ width: "100%" }}>
+                <Button
+                  onClick={() => setHpLevelUpOpen(false)}
+                  variant="text"
+                  startIcon={<CloseRoundedIcon />}
+                  sx={{ textTransform: "none", fontWeight: 800, borderRadius: "12px", color: "rgba(255,255,255,0.3)", "&:hover": { bgcolor: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.6)" } }}
+                >
+                  Pular
+                </Button>
+                <Box sx={{ flex: 1 }} />
+                <AppDialogConfirmButton onClick={applyHpLevelUp} sx={{ px: 4, py: 1.2, borderRadius: "12px" }}>
+                  Aplicar
+                </AppDialogConfirmButton>
+              </Stack>
+            }
+          >
+            <Stack spacing={2}>
+              {/* Level banner */}
+              <Box sx={{ px: 1.5, py: 1.25, borderRadius: "12px", bgcolor: "rgba(255,195,60,0.08)", border: "1px solid rgba(255,195,60,0.2)", display: "flex", alignItems: "center", gap: 1.5 }}>
+                <Box sx={{ width: 40, height: 40, borderRadius: "50%", background: "linear-gradient(135deg,#b87000,#f0c020)", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                  <Typography sx={{ fontSize: 18, fontWeight: 900, color: "#1c1100", lineHeight: 1 }}>{nivel}</Typography>
+                </Box>
+                <Box>
+                  <Typography sx={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,210,80,0.6)", lineHeight: 1, mb: 0.3 }}>
+                    Nível {nivel} alcançado!
+                  </Typography>
+                  <Typography sx={{ fontSize: 13.5, fontWeight: 700, color: "rgba(255,215,100,0.9)", lineHeight: 1.2 }}>
+                    Role seu dado de vida para aumentar o HP máximo
+                  </Typography>
+                </Box>
+              </Box>
+
+              {/* ASI banner */}
+              {asiGainedOnLevelUp > 0 && (
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, px: 1.5, py: 1.1, borderRadius: "12px", bgcolor: "rgba(120,85,255,0.1)", border: "1px solid rgba(120,85,255,0.3)" }}>
+                  <Typography sx={{ fontSize: 22, lineHeight: 1, flexShrink: 0 }}>⬆️</Typography>
+                  <Box>
+                    <Typography sx={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(160,130,255,0.7)", lineHeight: 1, mb: 0.3 }}>
+                      Ability Score Improvement
+                    </Typography>
+                    <Typography sx={{ fontSize: 13, fontWeight: 900, color: "rgba(200,175,255,0.95)", lineHeight: 1.3 }}>
+                      +{asiGainedOnLevelUp} ponto{asiGainedOnLevelUp > 1 ? "s" : ""} de atributo desbloqueado{asiGainedOnLevelUp > 1 ? "s" : ""}!
+                    </Typography>
+                    <Typography sx={{ fontSize: 11, color: "rgba(175,150,255,0.6)", mt: 0.3 }}>
+                      Distribua na seção de Atributos da ficha.
+                    </Typography>
+                  </Box>
+                </Box>
+              )}
+
+              {/* Die info */}
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, px: 1.5, py: 1.25, borderRadius: "12px", bgcolor: "rgba(75,175,130,0.07)", border: "1px solid rgba(75,175,130,0.18)" }}>
+                <Typography sx={{ fontSize: 26, lineHeight: 1 }}>🎲</Typography>
+                <Box>
+                  <Typography sx={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(100,220,160,0.6)", lineHeight: 1, mb: 0.25 }}>
+                    Dado de Vida — {(draft as any)?.dndClass?.name ?? "Classe"}
+                  </Typography>
+                  <Typography sx={{ fontSize: 20, fontWeight: 900, color: "rgba(130,240,180,0.95)", lineHeight: 1.2 }}>
+                    1d{dieSize}
+                  </Typography>
+                  {conMod !== 0 && (
+                    <Typography sx={{ fontSize: 12, color: "rgba(120,185,255,0.8)", mt: 0.25 }}>
+                      + Mod. CON {conMod > 0 ? `+${conMod}` : conMod} (mín. 1 HP)
+                    </Typography>
+                  )}
+                </Box>
+              </Box>
+
+              {/* Input */}
+              <TextField
+                label={`Resultado do dado (1–${dieSize})`}
+                value={hpLevelUpRoll}
+                onChange={(e) => { setHpLevelUpRoll(e.target.value.replace(/\D/g, "")); setError(null); }}
+                inputMode="numeric"
+                fullWidth
+                InputProps={{ startAdornment: <InputAdornment position="start"><FavoriteRoundedIcon sx={{ fontSize: 18, color: "rgba(75,200,130,0.45)" }} /></InputAdornment> }}
+                sx={inputSx}
+              />
+
+              {/* Preview */}
+              {preview && (
+                <Box sx={{ px: 1.5, py: 1, borderRadius: "10px", bgcolor: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <Typography sx={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>Ganho de HP</Typography>
+                  <Typography sx={{ fontSize: 15, fontWeight: 900, color: "rgba(100,240,170,0.95)" }}>
+                    +{Math.max(1, roll + conMod)} HP
+                    {conMod !== 0 && (
+                      <Typography component="span" sx={{ fontSize: 11, fontWeight: 600, opacity: 0.65, ml: 0.5 }}>
+                        ({roll} {conMod > 0 ? `+${conMod}` : conMod})
+                      </Typography>
+                    )}
+                  </Typography>
+                </Box>
+              )}
+
+              {error && (
+                <Typography sx={{ fontSize: 12, color: "rgba(255,100,100,0.8)", fontWeight: 600 }}>{error}</Typography>
+              )}
+            </Stack>
+          </AppDialog>
+        );
+      })()}
 
       {/* ── Spell Quick Panel ───────────────────────────────────────────────── */}
       {id && ((draft as any)?.dndClass?.classSpells?.length ?? 0) > 0 && (

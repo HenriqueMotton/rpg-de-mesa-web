@@ -16,8 +16,7 @@ import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 import MenuBookRoundedIcon from "@mui/icons-material/MenuBookRounded";
-import { ALL_DND_SPELLS, type DndSpellData } from "../../modules/spells/dnd-spells.data";
-import type { CharacterSpell } from "../../modules/spells/spells.api";
+import type { CharacterSpell, DndSpellData } from "../../modules/spells/spells.api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

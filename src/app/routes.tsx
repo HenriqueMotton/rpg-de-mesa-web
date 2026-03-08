@@ -14,6 +14,7 @@ import InventoryPage from "../pages/personagens/InventoryPage";
 import GrimorioPage from "../pages/personagens/GrimorioPage";
 import ClassePage from "../pages/personagens/ClassePage";
 import ConfigPage from "../pages/ConfigPage";
+import EnemiesPage from "../pages/mestre/EnemiesPage";
 
 export const ROUTES = {
   login: "/login",
@@ -27,6 +28,7 @@ export const ROUTES = {
   classe: "/personagens/:id/classe",
 
   config: "/config",
+  inimigos: "/mestre/inimigos",
 } as const;
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -73,6 +75,14 @@ export const routes: RouteObject[] = [
         element: (
           <RequireMaster>
             <ConfigPage />
+          </RequireMaster>
+        ),
+      },
+      {
+        path: ROUTES.inimigos.slice(1),
+        element: (
+          <RequireMaster>
+            <EnemiesPage />
           </RequireMaster>
         ),
       },

@@ -14,7 +14,9 @@ type CharacterDraft = {
   attributes: Record<AttrKey, number>;
   pointsRemaining: number;
 
-  money: number;
+  pp: number;
+  money: number; // po
+  pl: number;
   health: number;
   maxHealth: number;
 
@@ -36,7 +38,9 @@ const DEFAULT_DRAFT: CharacterDraft = {
   },
   pointsRemaining: 27,
 
-  money: 1000,
+  pp: 0,
+  money: 0,
+  pl: 0,
   health: 8,
   maxHealth: 8,
 
@@ -54,6 +58,9 @@ type CharactersStore = {
   selected: Character | null;
   setSelected: (c: Character | null) => void;
 
+  spellDeficit: boolean;
+  setSpellDeficit: (v: boolean) => void;
+
   // ✅ Draft de criação
   draft: CharacterDraft;
   resetDraft: () => void;
@@ -62,7 +69,9 @@ type CharactersStore = {
   setDraftAttribute: (k: AttrKey, v: number) => void;
   setDraftPointsRemaining: (v: number) => void;
 
+  setDraftPP: (v: number) => void;
   setDraftMoney: (v: number) => void;
+  setDraftPL: (v: number) => void;
   setDraftHealth: (v: number) => void;
   setDraftMaxHealth: (v: number) => void;
 
@@ -83,6 +92,9 @@ export const useCharactersStore = create<CharactersStore>((set) => ({
   selected: null,
   setSelected: (selected) => set({ selected }),
 
+  spellDeficit: false,
+  setSpellDeficit: (spellDeficit) => set({ spellDeficit }),
+
   draft: DEFAULT_DRAFT,
   resetDraft: () => set({ draft: DEFAULT_DRAFT }),
 
@@ -96,7 +108,9 @@ export const useCharactersStore = create<CharactersStore>((set) => ({
   setDraftPointsRemaining: (pointsRemaining) =>
     set((s) => ({ draft: { ...s.draft, pointsRemaining } })),
 
+  setDraftPP: (pp) => set((s) => ({ draft: { ...s.draft, pp } })),
   setDraftMoney: (money) => set((s) => ({ draft: { ...s.draft, money } })),
+  setDraftPL: (pl) => set((s) => ({ draft: { ...s.draft, pl } })),
   setDraftHealth: (health) => set((s) => ({ draft: { ...s.draft, health } })),
   setDraftMaxHealth: (maxHealth) =>
     set((s) => ({ draft: { ...s.draft, maxHealth } })),

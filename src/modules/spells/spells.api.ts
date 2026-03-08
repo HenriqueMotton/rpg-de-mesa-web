@@ -1,5 +1,30 @@
 import { http } from "../../shared/http/http";
 
+export type DndSpellData = {
+  id: number;
+  name: string;
+  level: number;
+  school: string;
+  castingTime: string;
+  range: string;
+  duration: string;
+  componentV: boolean;
+  componentS: boolean;
+  componentM: boolean;
+  materialComponent?: string;
+  description: string;
+  classes: string[];
+};
+
+export async function getDndSpells(params?: { class?: string; maxLevel?: number }): Promise<DndSpellData[]> {
+  const query = new URLSearchParams();
+  if (params?.class) query.set('class', params.class);
+  if (params?.maxLevel !== undefined) query.set('maxLevel', String(params.maxLevel));
+  const qs = query.toString();
+  const { data } = await http.get<DndSpellData[]>(`/spells/catalog${qs ? `?${qs}` : ''}`);
+  return data;
+}
+
 export type CharacterSpell = {
   id: number;
   name: string;

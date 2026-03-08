@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Box,
   Button,
@@ -17,7 +17,7 @@ import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 import AutoStoriesRoundedIcon from "@mui/icons-material/AutoStoriesRounded";
-import { ALL_DND_SPELLS, type DndSpellData } from "../../modules/spells/dnd-spells.data";
+import { getDndSpells, type DndSpellData } from "../../modules/spells/spells.api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -60,15 +60,18 @@ function levelColor(level: number) {
 // ─── SpellRow ─────────────────────────────────────────────────────────────────
 
 function SpellRow({
-  spell, selected, locked, onToggle,
+  spell, selected, locked, disabled, onToggle,
 }: {
   spell: DndSpellData;
   selected: boolean;
   locked: boolean;
+  /** limit reached for this spell type — not selectable, visually dimmed */
+  disabled: boolean;
   onToggle: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const lc = levelColor(spell.level);
+  const inactive = locked || disabled;
 
   return (
     <Box
@@ -78,20 +81,22 @@ function SpellRow({
           ? "1.5px solid rgba(120,85,255,0.55)"
           : locked
           ? "1px solid rgba(255,255,255,0.05)"
+          : disabled
+          ? "1px solid rgba(255,255,255,0.04)"
           : "1px solid rgba(255,255,255,0.08)",
         bgcolor: selected
           ? "rgba(120,85,255,0.1)"
-          : locked
-          ? "rgba(255,255,255,0.015)"
+          : inactive
+          ? "rgba(255,255,255,0.012)"
           : "rgba(255,255,255,0.025)",
-        opacity: locked ? 0.55 : 1,
+        opacity: inactive ? 0.4 : 1,
         overflow: "hidden",
         transition: "all .14s",
       }}
     >
       <Box
-        sx={{ display: "flex", alignItems: "center", gap: 1.25, pl: 1.25, pr: 0.75, py: 1, cursor: locked ? "default" : "pointer" }}
-        onClick={() => { if (!locked) onToggle(); }}
+        sx={{ display: "flex", alignItems: "center", gap: 1.25, pl: 1.25, pr: 0.75, py: 1, cursor: inactive ? "default" : "pointer" }}
+        onClick={() => { if (!inactive) onToggle(); }}
       >
         {/* School icon */}
         <Box sx={{ width: 30, height: 30, borderRadius: "8px", display: "grid", placeItems: "center", bgcolor: lc.bg, border: `1px solid ${lc.border}`, fontSize: 14, flexShrink: 0 }}>
@@ -163,6 +168,9 @@ export default function SpellPickerModal({ open, target, saving, onClose, onConf
   const [search, setSearch] = useState("");
   const [levelFilter, setLevelFilter] = useState<"todos" | "truques" | "leveled">("todos");
   const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set());
+  const [catalogSpells, setCatalogSpells] = useState<DndSpellData[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState(false);
 
   // Reset when target changes
   const [prevTarget, setPrevTarget] = useState<SpellPickerTarget | null>(null);
@@ -171,15 +179,27 @@ export default function SpellPickerModal({ open, target, saving, onClose, onConf
     setSelectedNames(new Set());
     setSearch("");
     setLevelFilter("todos");
+    setCatalogSpells([]);
+    setCatalogError(false);
   }
 
   const { cantripsToPick = 0, leveledToPick = 0, maxSpellLevel = 0, alreadyKnownNames = new Set(), className = "" } = target ?? {};
 
+  // Fetch catalog from API when dialog opens
+  useEffect(() => {
+    if (!open || !className) return;
+    setCatalogLoading(true);
+    setCatalogError(false);
+    getDndSpells({ class: className, maxLevel: maxSpellLevel })
+      .then(setCatalogSpells)
+      .catch(() => setCatalogError(true))
+      .finally(() => setCatalogLoading(false));
+  }, [open, className, maxSpellLevel]);
+
   const availableSpells = useMemo(() =>
-    ALL_DND_SPELLS.filter((s) =>
-      s.classes.includes(className) &&
-      (s.level === 0 || s.level <= maxSpellLevel)
-    ), [className, maxSpellLevel]
+    catalogSpells.filter((s) =>
+      s.level === 0 || s.level <= maxSpellLevel
+    ), [catalogSpells, maxSpellLevel]
   );
 
   const filteredSpells = useMemo(() => {
@@ -309,7 +329,17 @@ export default function SpellPickerModal({ open, target, saving, onClose, onConf
 
         {/* Spell List */}
         <Box sx={{ flex: 1, overflowY: "auto", px: 2, py: 1.5 }}>
-          {filteredSpells.length === 0 ? (
+          {catalogLoading ? (
+            <Box sx={{ py: 6, textAlign: "center" }}>
+              <CircularProgress size={24} sx={{ color: "rgba(160,130,255,0.7)" }} />
+            </Box>
+          ) : catalogError ? (
+            <Box sx={{ py: 6, textAlign: "center" }}>
+              <Typography sx={{ fontSize: 13, color: "rgba(255,100,100,0.7)", fontStyle: "italic" }}>
+                Não foi possível carregar o catálogo de magias.
+              </Typography>
+            </Box>
+          ) : filteredSpells.length === 0 ? (
             <Box sx={{ py: 6, textAlign: "center" }}>
               <Typography sx={{ fontSize: 13, color: "rgba(255,255,255,0.25)", fontStyle: "italic" }}>
                 Nenhuma magia encontrada.
@@ -317,15 +347,25 @@ export default function SpellPickerModal({ open, target, saving, onClose, onConf
             </Box>
           ) : (
             <Stack spacing={0.75}>
-              {filteredSpells.map((spell) => (
-                <SpellRow
-                  key={spell.name}
-                  spell={spell}
-                  selected={selectedNames.has(spell.name)}
-                  locked={alreadyKnownNames.has(spell.name)}
-                  onToggle={() => toggle(spell)}
-                />
-              ))}
+              {filteredSpells.map((spell) => {
+                const isSelected = selectedNames.has(spell.name);
+                const isLocked = alreadyKnownNames.has(spell.name);
+                const isCantrip = spell.level === 0;
+                const limitReached = isCantrip
+                  ? selectedCantrips >= cantripsToPick
+                  : selectedLeveled >= leveledToPick;
+                const isDisabled = !isSelected && !isLocked && limitReached;
+                return (
+                  <SpellRow
+                    key={spell.name}
+                    spell={spell}
+                    selected={isSelected}
+                    locked={isLocked}
+                    disabled={isDisabled}
+                    onToggle={() => toggle(spell)}
+                  />
+                );
+              })}
             </Stack>
           )}
         </Box>

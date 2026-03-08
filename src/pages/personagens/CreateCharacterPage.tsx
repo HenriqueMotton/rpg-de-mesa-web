@@ -42,8 +42,7 @@ import { listClasses, type DndClass } from "../../modules/classes/classes.api";
 import { listKits, type Kit } from "../../modules/kits/kits.api";
 import { addEquipment } from "../../modules/equipment/equipment.api";
 import { Glass, Page, OrbTop, OrbSide, Noise } from "./CreateCharacter.styles";
-import AppDialog, { AppDialogConfirmButton } from "../../components/ui/AppDialog";
-import RollDialog from "../../components/ui/RollDialog";
+import AppDialog, { AppDialogCancelButton, AppDialogConfirmButton } from "../../components/ui/AppDialog";
 import SkillsDialog from "../../components/ui/SkillsDialog";
 
 type AttrKey = "forca" | "destreza" | "constituicao" | "inteligencia" | "sabedoria" | "carisma";
@@ -103,6 +102,28 @@ const RACE_HEIGHT: Record<string, { min: number; max: number; size: SizeKey }> =
 
 const SIZE_MULTIPLIER: Record<SizeKey, number> = {
   TINY: 0.5, SMALL: 1, MEDIUM: 1, LARGE: 2, HUGE: 4, GARGANTUAN: 8,
+};
+
+const HIT_DICE_BY_CLASS: Record<string, number> = {
+  "Bárbaro": 12, "Bardo": 8, "Bruxo": 8, "Clérico": 8, "Druida": 8,
+  "Feiticeiro": 6, "Guerreiro": 10, "Ladino": 8, "Mago": 6,
+  "Monge": 8, "Paladino": 10, "Patrulheiro": 10,
+};
+
+type GoldDice = { dice: number; sides: number; multiplier: number };
+const GOLD_DICE_BY_CLASS: Record<string, GoldDice> = {
+  "Bárbaro":     { dice: 2, sides: 4, multiplier: 10 },
+  "Bardo":       { dice: 5, sides: 4, multiplier: 10 },
+  "Bruxo":       { dice: 4, sides: 4, multiplier: 10 },
+  "Clérico":     { dice: 5, sides: 4, multiplier: 10 },
+  "Druida":      { dice: 2, sides: 4, multiplier: 10 },
+  "Feiticeiro":  { dice: 3, sides: 4, multiplier: 10 },
+  "Guerreiro":   { dice: 5, sides: 4, multiplier: 10 },
+  "Ladino":      { dice: 4, sides: 4, multiplier: 10 },
+  "Mago":        { dice: 4, sides: 4, multiplier: 10 },
+  "Monge":       { dice: 5, sides: 4, multiplier: 10 },
+  "Paladino":    { dice: 5, sides: 4, multiplier: 10 },
+  "Patrulheiro": { dice: 5, sides: 4, multiplier: 10 },
 };
 
 function getAttributeCost(value: number) {
@@ -230,7 +251,9 @@ export default function CreateCharacterPage() {
   const setDraftName            = useCharactersStore((s) => s.setDraftName);
   const setDraftAttribute       = useCharactersStore((s) => s.setDraftAttribute);
   const setDraftPointsRemaining = useCharactersStore((s) => s.setDraftPointsRemaining);
+  const setDraftPP              = useCharactersStore((s) => s.setDraftPP);
   const setDraftMoney           = useCharactersStore((s) => s.setDraftMoney);
+  const setDraftPL              = useCharactersStore((s) => s.setDraftPL);
   const setDraftHealth          = useCharactersStore((s) => s.setDraftHealth);
   const setDraftMaxHealth       = useCharactersStore((s) => s.setDraftMaxHealth);
   const toggleDraftSkill        = useCharactersStore((s) => s.toggleDraftSkill);
@@ -238,7 +261,7 @@ export default function CreateCharacterPage() {
   const setDraftSubRaceId       = useCharactersStore((s) => s.setDraftSubRaceId);
   const setDraftClass           = useCharactersStore((s) => s.setDraftClass);
 
-  const { name, attributes, pointsRemaining, money, health, maxHealth, selectedSkills, selectedRaceId, selectedSubRaceId, selectedClassId } = draft;
+  const { name, attributes, pointsRemaining, pp, money, pl, health, maxHealth, selectedSkills, selectedRaceId, selectedSubRaceId, selectedClassId } = draft;
 
   const [step,       setStep]       = useState<1 | 2 | 3 | 4>(1);
   const [saving,     setSaving]     = useState(false);
@@ -289,7 +312,10 @@ export default function CreateCharacterPage() {
     }
   }, [detailClass]);
 
-  const selectedRace    = races.find((r) => r.id === selectedRaceId) ?? null;
+  const selectedRace  = races.find((r) => r.id === selectedRaceId) ?? null;
+  const selectedClass = classes.find((c) => c.id === selectedClassId) ?? null;
+  const hitDie        = HIT_DICE_BY_CLASS[selectedClass?.name ?? ""] ?? 8;
+  const goldDice      = GOLD_DICE_BY_CLASS[selectedClass?.name ?? ""] ?? { dice: 4, sides: 4, multiplier: 10 };
 
   useEffect(() => {
     if (selectedRace) {
@@ -297,6 +323,23 @@ export default function CreateCharacterPage() {
       if (range) setHeight(Math.round((range.min + range.max) / 2));
     }
   }, [selectedRaceId]);
+
+  // Quando a classe muda, define HP e ouro padrão baseados na classe
+  useEffect(() => {
+    if (selectedClassId && classes.length > 0) {
+      const cls = classes.find((c) => c.id === selectedClassId);
+      if (cls) {
+        const die  = HIT_DICE_BY_CLASS[cls.name] ?? 8;
+        setDraftHealth(die);
+        setDraftMaxHealth(die);
+        const gd   = GOLD_DICE_BY_CLASS[cls.name] ?? { dice: 4, sides: 4, multiplier: 10 };
+        const avgRoll = Math.round(gd.dice * (gd.sides + 1) / 2);
+        setDraftPP(0);
+        setDraftMoney(avgRoll * gd.multiplier);
+        setDraftPL(0);
+      }
+    }
+  }, [selectedClassId, classes]);
   const selectedSubRace = selectedRace?.subRaces?.find((sr) => sr.id === selectedSubRaceId) ?? null;
   const conRaceBonus    = (selectedRace?.bonuses?.constituicao ?? 0) + (selectedSubRace?.bonuses?.constituicao ?? 0);
   const conMod          = Math.floor((attributes.constituicao + conRaceBonus - 10) / 2);
@@ -346,17 +389,25 @@ export default function CreateCharacterPage() {
   }
 
   function confirmMoneyRoll() {
-    const v = Number(tempRoll);
-    if (!Number.isFinite(v) || v < 0 || v > 60) { setError("Valor inválido. Informe um número entre 0 e 60."); return; }
-    setDraftMoney(v * 50 + 1000);
+    const v   = Number(tempRoll);
+    const min = goldDice.dice;
+    const max = goldDice.dice * goldDice.sides;
+    if (!Number.isFinite(v) || v < min || v > max) {
+      setError(`Valor inválido. Informe entre ${min} e ${max}.`);
+      return;
+    }
+    setDraftMoney(v * goldDice.multiplier);
     setMoneyOpen(false);
   }
 
   function confirmHealthRoll() {
     const v = Number(tempRoll);
-    if (!Number.isFinite(v) || v < 0 || v > 16) { setError("Valor inválido. Informe um número entre 0 e 16."); return; }
-    setDraftMaxHealth(v + 8);
-    setDraftHealth(v + 8);
+    if (!Number.isFinite(v) || v < 1 || v > hitDie) {
+      setError(`Valor inválido. Informe um número entre 1 e ${hitDie}.`);
+      return;
+    }
+    setDraftMaxHealth(v);
+    setDraftHealth(v);
     setHealthOpen(false);
   }
 
@@ -378,8 +429,10 @@ export default function CreateCharacterPage() {
         name,
         attributes,
         selectedSkills: selectedSkills.slice(0, 5),
+        pp,
         money,
-        health,
+        pl,
+        health: Math.max(1, effectiveHp),
         raceId: selectedRaceId ?? undefined,
         subRaceId: selectedSubRaceId ?? undefined,
         classId: selectedClassId ?? undefined,
@@ -624,13 +677,63 @@ export default function CreateCharacterPage() {
                   sx={inputSx}
                 />
 
-                {/* Ouro */}
-                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                  <Box onClick={() => { setTempRoll(""); setMoneyOpen(true); }} sx={{ display: "flex", alignItems: "center", gap: 0.6, px: 1.2, py: 0.6, borderRadius: "9px", cursor: "pointer", bgcolor: "rgba(255,195,80,0.08)", border: "1px solid rgba(255,195,80,0.18)", transition: "all 0.18s", "&:hover": { bgcolor: "rgba(255,195,80,0.14)", borderColor: "rgba(255,195,80,0.3)" } }}>
-                    <MonetizationOnRoundedIcon sx={{ fontSize: 14, color: "rgba(255,195,80,0.8)" }} />
-                    <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: "rgba(255,210,100,0.9)" }}>{money} ouro</Typography>
+                {/* Ouro — card clicável */}
+                <Box
+                  onClick={() => { setTempRoll(""); setError(null); setMoneyOpen(true); }}
+                  sx={{
+                    display: "flex", alignItems: "center", gap: 1.5,
+                    px: 1.75, py: 1.5,
+                    borderRadius: "14px",
+                    cursor: "pointer",
+                    bgcolor: "rgba(255,195,80,0.07)",
+                    border: "1.5px solid rgba(255,195,80,0.28)",
+                    transition: "all 0.18s",
+                    "&:hover": {
+                      bgcolor: "rgba(255,195,80,0.13)",
+                      borderColor: "rgba(255,195,80,0.5)",
+                      boxShadow: "0 0 18px rgba(255,195,80,0.1)",
+                    },
+                    "&:active": { transform: "scale(0.985)" },
+                  }}
+                >
+                  {/* Icon */}
+                  <Box sx={{ width: 40, height: 40, borderRadius: "11px", display: "grid", placeItems: "center", flexShrink: 0, bgcolor: "rgba(255,195,80,0.13)", border: "1px solid rgba(255,210,100,0.22)" }}>
+                    <MonetizationOnRoundedIcon sx={{ fontSize: 20, color: "rgba(255,215,100,0.9)" }} />
                   </Box>
-                </Stack>
+
+                  {/* Texts */}
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography sx={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,210,100,0.5)", lineHeight: 1, mb: 0.3 }}>
+                      Ouro Inicial
+                    </Typography>
+                    <Stack direction="row" alignItems="baseline" spacing={1} flexWrap="wrap">
+                      {pp > 0 && (
+                        <Stack direction="row" alignItems="baseline" spacing={0.4}>
+                          <Typography sx={{ fontSize: 17, fontWeight: 900, color: "rgba(200,210,230,0.9)", lineHeight: 1 }}>{pp}</Typography>
+                          <Typography sx={{ fontSize: 11, fontWeight: 700, color: "rgba(180,195,220,0.55)" }}>pp</Typography>
+                        </Stack>
+                      )}
+                      <Stack direction="row" alignItems="baseline" spacing={0.4}>
+                        <Typography sx={{ fontSize: 22, fontWeight: 900, color: "rgba(255,220,120,0.95)", lineHeight: 1 }}>{money}</Typography>
+                        <Typography sx={{ fontSize: 13, fontWeight: 700, color: "rgba(255,210,100,0.6)" }}>po</Typography>
+                      </Stack>
+                      {pl > 0 && (
+                        <Stack direction="row" alignItems="baseline" spacing={0.4}>
+                          <Typography sx={{ fontSize: 17, fontWeight: 900, color: "rgba(200,240,255,0.9)", lineHeight: 1 }}>{pl}</Typography>
+                          <Typography sx={{ fontSize: 11, fontWeight: 700, color: "rgba(160,220,255,0.55)" }}>pl</Typography>
+                        </Stack>
+                      )}
+                    </Stack>
+                    <Typography sx={{ fontSize: 11.5, color: "rgba(255,255,255,0.3)", mt: 0.25 }}>
+                      Role {goldDice.dice}d{goldDice.sides} (PO) e toque aqui para registrar
+                    </Typography>
+                  </Box>
+
+                  {/* Edit cue */}
+                  <Box sx={{ flexShrink: 0, display: "flex", alignItems: "center", px: 1, py: 0.5, borderRadius: "8px", bgcolor: "rgba(255,195,80,0.12)", border: "1px solid rgba(255,210,100,0.2)" }}>
+                    <Typography sx={{ fontSize: 11.5, fontWeight: 800, color: "rgba(255,220,120,0.8)" }}>Definir</Typography>
+                  </Box>
+                </Box>
 
                 {/* ── PERÍCIAS ─────────────────────────────────────── */}
                 <Box
@@ -758,7 +861,7 @@ export default function CreateCharacterPage() {
                   </Typography>
                 </Box>
 
-                {/* HP pill + Carry capacity */}
+                {/* HP Card + Carry capacity */}
                 {(() => {
                   const raceRange   = selectedRace ? RACE_HEIGHT[selectedRace.name] : null;
                   const size        = raceRange?.size ?? "MEDIUM";
@@ -767,22 +870,63 @@ export default function CreateCharacterPage() {
                   const forcaTotal  = attributes.forca + forcaRBonus;
                   const carryKg     = Math.round(forcaTotal * 15 * sizeMulti * 0.453592);
                   return (
-                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                      <Box onClick={() => { setTempRoll(""); setHealthOpen(true); }} sx={{ display: "flex", alignItems: "center", gap: 0.6, px: 1.2, py: 0.6, borderRadius: "9px", cursor: "pointer", bgcolor: "rgba(75,175,130,0.08)", border: "1px solid rgba(75,175,130,0.2)", transition: "all 0.18s", "&:hover": { bgcolor: "rgba(75,175,130,0.14)", borderColor: "rgba(75,175,130,0.35)" } }}>
-                        <FavoriteRoundedIcon sx={{ fontSize: 14, color: "rgba(75,200,130,0.85)" }} />
-                        <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: "rgba(100,220,160,0.9)" }}>
-                          {effectiveHp} HP
-                          {conMod !== 0 && (
-                            <Typography component="span" sx={{ fontSize: 11, fontWeight: 600, ml: 0.4, opacity: 0.7 }}>
-                              ({conMod > 0 ? "+" : ""}{conMod} CON)
+                    <Stack spacing={1}>
+                      {/* HP — card clicável */}
+                      <Box
+                        onClick={() => { setTempRoll(""); setError(null); setHealthOpen(true); }}
+                        sx={{
+                          display: "flex", alignItems: "center", gap: 1.5,
+                          px: 1.75, py: 1.5,
+                          borderRadius: "14px",
+                          cursor: "pointer",
+                          bgcolor: "rgba(75,175,130,0.08)",
+                          border: "1.5px solid rgba(75,175,130,0.28)",
+                          transition: "all 0.18s",
+                          "&:hover": {
+                            bgcolor: "rgba(75,175,130,0.14)",
+                            borderColor: "rgba(75,175,130,0.5)",
+                            boxShadow: "0 0 18px rgba(75,200,130,0.12)",
+                          },
+                          "&:active": { transform: "scale(0.985)" },
+                        }}
+                      >
+                        {/* Icon */}
+                        <Box sx={{ width: 40, height: 40, borderRadius: "11px", display: "grid", placeItems: "center", flexShrink: 0, bgcolor: "rgba(75,175,130,0.15)", border: "1px solid rgba(75,200,130,0.22)" }}>
+                          <FavoriteRoundedIcon sx={{ fontSize: 20, color: "rgba(100,230,170,0.9)" }} />
+                        </Box>
+
+                        {/* Texts */}
+                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                          <Typography sx={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(100,220,160,0.55)", lineHeight: 1, mb: 0.3 }}>
+                            Pontos de Vida
+                          </Typography>
+                          <Stack direction="row" alignItems="baseline" spacing={0.5}>
+                            <Typography sx={{ fontSize: 22, fontWeight: 900, color: "rgba(130,245,185,0.95)", lineHeight: 1 }}>
+                              {effectiveHp}
                             </Typography>
-                          )}
-                        </Typography>
+                            <Typography sx={{ fontSize: 13, fontWeight: 700, color: "rgba(100,220,160,0.6)" }}>HP</Typography>
+                            {conMod !== 0 && (
+                              <Typography sx={{ fontSize: 11.5, fontWeight: 600, color: "rgba(120,185,255,0.7)" }}>
+                                ({health} {conMod > 0 ? "+" : ""}{conMod} CON)
+                              </Typography>
+                            )}
+                          </Stack>
+                          <Typography sx={{ fontSize: 11.5, color: "rgba(255,255,255,0.3)", mt: 0.25 }}>
+                            Role 1d{hitDie} e toque aqui para registrar
+                          </Typography>
+                        </Box>
+
+                        {/* Edit cue */}
+                        <Box sx={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 0.5, px: 1, py: 0.5, borderRadius: "8px", bgcolor: "rgba(75,175,130,0.12)", border: "1px solid rgba(75,200,130,0.2)" }}>
+                          <Typography sx={{ fontSize: 11.5, fontWeight: 800, color: "rgba(100,230,170,0.8)" }}>Definir</Typography>
+                        </Box>
                       </Box>
-                      <Box sx={{ display: "flex", alignItems: "center", gap: 0.6, px: 1.2, py: 0.6, borderRadius: "9px", bgcolor: "rgba(255,180,50,0.07)", border: "1px solid rgba(255,180,50,0.18)" }}>
+
+                      {/* Carry capacity — pequeno, só informativo */}
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 0.6, px: 1.2, py: 0.55, borderRadius: "9px", bgcolor: "rgba(255,180,50,0.07)", border: "1px solid rgba(255,180,50,0.15)", alignSelf: "flex-start" }}>
                         <Typography sx={{ fontSize: 13, lineHeight: 1 }}>🎒</Typography>
-                        <Typography sx={{ fontSize: 12.5, fontWeight: 700, color: "rgba(255,200,100,0.85)" }}>
-                          {carryKg} kg
+                        <Typography sx={{ fontSize: 12, fontWeight: 700, color: "rgba(255,200,100,0.8)" }}>
+                          Carga máx. {carryKg} kg
                         </Typography>
                       </Box>
                     </Stack>
@@ -1325,8 +1469,143 @@ export default function CreateCharacterPage() {
 
         {/* Dialogs */}
         <SkillsDialog open={skillsOpen} onClose={() => setSkillsOpen(false)} selected={selectedSkills} toggle={toggleDraftSkill} max={5} />
-        <RollDialog open={moneyOpen} onClose={() => setMoneyOpen(false)} title="Rolar Dinheiro" helperText="Role 1D20 × 1D3 e insira o resultado (0–60)." value={tempRoll} onChange={setTempRoll} onConfirm={confirmMoneyRoll} inputSx={{ mt: 0.5, ...inputSx }} />
-        <RollDialog open={healthOpen} onClose={() => setHealthOpen(false)} title="Rolar Vida" helperText="Role 1D20 ÷ 2 + 1D6 e insira o resultado (0–16)." value={tempRoll} onChange={setTempRoll} onConfirm={confirmHealthRoll} inputSx={{ mt: 0.5, ...inputSx }} />
+        {/* Money Roll Dialog */}
+        <AppDialog
+          open={moneyOpen}
+          onClose={() => { setMoneyOpen(false); setError(null); }}
+          title={`Ouro Inicial — ${goldDice.dice}d${goldDice.sides} × ${goldDice.multiplier}`}
+          dividers
+          actions={
+            <>
+              <AppDialogCancelButton onClick={() => { setMoneyOpen(false); setError(null); }}>Cancelar</AppDialogCancelButton>
+              <AppDialogConfirmButton onClick={confirmMoneyRoll}>Confirmar</AppDialogConfirmButton>
+            </>
+          }
+        >
+          <Stack spacing={2}>
+            {/* Formula info */}
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, px: 1.5, py: 1.25, borderRadius: "12px", bgcolor: "rgba(255,195,80,0.07)", border: "1px solid rgba(255,195,80,0.2)" }}>
+              <Typography sx={{ fontSize: 26, lineHeight: 1 }}>🪙</Typography>
+              <Box>
+                <Typography sx={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,210,100,0.55)", lineHeight: 1, mb: 0.25 }}>
+                  Fórmula — {selectedClass?.name ?? "Classe"}
+                </Typography>
+                <Typography sx={{ fontSize: 20, fontWeight: 900, color: "rgba(255,220,120,0.95)", lineHeight: 1.2 }}>
+                  {goldDice.dice}d{goldDice.sides} × {goldDice.multiplier} po
+                </Typography>
+                <Typography sx={{ fontSize: 12, color: "rgba(255,255,255,0.38)", mt: 0.3, lineHeight: 1.4 }}>
+                  Role {goldDice.dice} dado{goldDice.dice > 1 ? "s" : ""} de {goldDice.sides} lados, some e multiplique por {goldDice.multiplier}.
+                </Typography>
+              </Box>
+            </Box>
+
+            {/* Range hint */}
+            <Box sx={{ display: "flex", justifyContent: "space-between", px: 1.25, py: 0.85, borderRadius: "10px", bgcolor: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
+              <Typography sx={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>
+                Mín: <b style={{ color: "rgba(255,215,100,0.7)" }}>{goldDice.dice * goldDice.multiplier} po</b>
+              </Typography>
+              <Typography sx={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>
+                Máx: <b style={{ color: "rgba(255,215,100,0.7)" }}>{goldDice.dice * goldDice.sides * goldDice.multiplier} po</b>
+              </Typography>
+            </Box>
+
+            {/* Input */}
+            <TextField
+              label={`Soma dos dados (${goldDice.dice}–${goldDice.dice * goldDice.sides})`}
+              value={tempRoll}
+              onChange={(e) => { setTempRoll(e.target.value.replace(/\D/g, "")); setError(null); }}
+              inputMode="numeric"
+              fullWidth
+              sx={inputSx}
+            />
+
+            {/* Preview */}
+            {tempRoll !== "" && Number(tempRoll) >= goldDice.dice && Number(tempRoll) <= goldDice.dice * goldDice.sides && (
+              <Box sx={{ px: 1.5, py: 1, borderRadius: "10px", bgcolor: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <Typography sx={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>Ouro inicial</Typography>
+                <Typography sx={{ fontSize: 15, fontWeight: 900, color: "rgba(255,220,120,0.95)" }}>
+                  {Number(tempRoll) * goldDice.multiplier} po
+                  <Typography component="span" sx={{ fontSize: 11, fontWeight: 600, opacity: 0.6, ml: 0.5 }}>
+                    ({tempRoll} × {goldDice.multiplier})
+                  </Typography>
+                </Typography>
+              </Box>
+            )}
+
+            {error && (
+              <Typography sx={{ fontSize: 12, color: "rgba(255,100,100,0.8)", fontWeight: 600 }}>{error}</Typography>
+            )}
+          </Stack>
+        </AppDialog>
+        {/* Health Roll Dialog */}
+        <AppDialog
+          open={healthOpen}
+          onClose={() => { setHealthOpen(false); setError(null); }}
+          title={`Vida Inicial — 1d${hitDie}`}
+          dividers
+          actions={
+            <>
+              <AppDialogCancelButton onClick={() => { setHealthOpen(false); setError(null); }}>Cancelar</AppDialogCancelButton>
+              <AppDialogConfirmButton onClick={confirmHealthRoll}>Confirmar</AppDialogConfirmButton>
+            </>
+          }
+        >
+          <Stack spacing={2}>
+            {/* Die info */}
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, px: 1.5, py: 1.25, borderRadius: "12px", bgcolor: "rgba(75,175,130,0.07)", border: "1px solid rgba(75,175,130,0.18)" }}>
+              <Typography sx={{ fontSize: 26, lineHeight: 1 }}>🎲</Typography>
+              <Box>
+                <Typography sx={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(100,220,160,0.6)", lineHeight: 1, mb: 0.3 }}>
+                  Dado de Vida — {selectedClass?.name ?? "Classe"}
+                </Typography>
+                <Typography sx={{ fontSize: 20, fontWeight: 900, color: "rgba(130,240,180,0.95)", lineHeight: 1.2 }}>
+                  1d{hitDie}
+                </Typography>
+                <Typography sx={{ fontSize: 12, color: "rgba(255,255,255,0.38)", mt: 0.3, lineHeight: 1.4 }}>
+                  No nível 1 você começa com o valor máximo por padrão. Role se preferir.
+                </Typography>
+              </Box>
+            </Box>
+
+            {/* CON mod info */}
+            {conMod !== 0 && (
+              <Box sx={{ px: 1.25, py: 0.85, borderRadius: "10px", bgcolor: "rgba(80,150,255,0.07)", border: "1px solid rgba(80,150,255,0.16)", display: "flex", alignItems: "center", gap: 1 }}>
+                <Typography sx={{ fontSize: 13, color: "rgba(120,185,255,0.85)", fontWeight: 700 }}>
+                  Mod. de CON: <span style={{ fontWeight: 900 }}>{conMod > 0 ? `+${conMod}` : conMod}</span> será somado ao resultado
+                </Typography>
+              </Box>
+            )}
+
+            {/* Input */}
+            <TextField
+              label={`Resultado (1–${hitDie})`}
+              value={tempRoll}
+              onChange={(e) => { setTempRoll(e.target.value.replace(/\D/g, "")); setError(null); }}
+              inputMode="numeric"
+              fullWidth
+              sx={inputSx}
+            />
+
+            {/* Preview */}
+            {tempRoll !== "" && Number(tempRoll) >= 1 && Number(tempRoll) <= hitDie && (
+              <Box sx={{ px: 1.5, py: 1, borderRadius: "10px", bgcolor: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <Typography sx={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>Vida inicial</Typography>
+                <Typography sx={{ fontSize: 15, fontWeight: 900, color: "rgba(100,240,170,0.95)" }}>
+                  {Math.max(1, Number(tempRoll) + conMod)} HP
+                  {conMod !== 0 && (
+                    <Typography component="span" sx={{ fontSize: 11, fontWeight: 600, opacity: 0.65, ml: 0.5 }}>
+                      ({tempRoll} {conMod > 0 ? `+${conMod}` : conMod})
+                    </Typography>
+                  )}
+                </Typography>
+              </Box>
+            )}
+
+            {error && (
+              <Typography sx={{ fontSize: 12, color: "rgba(255,100,100,0.8)", fontWeight: 600 }}>{error}</Typography>
+            )}
+          </Stack>
+        </AppDialog>
 
       </Container>
 

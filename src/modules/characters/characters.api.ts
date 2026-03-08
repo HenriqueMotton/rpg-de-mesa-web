@@ -3,7 +3,9 @@ import { http } from "../../shared/http/http";
 export type CharacterListItem = {
   id: number | string;
   name: string;
-  money: number;
+  pp: number;    // peças de prata
+  money: number; // peças de ouro
+  pl: number;    // peças de platina
   health: number;
   maxHealth: number;
   nivel: number;
@@ -12,6 +14,8 @@ export type CharacterListItem = {
   race?: { id: number; name: string } | null;
   subRace?: { id: number; name: string } | null;
   dndClass?: { id: number; name: string; icon: string } | null;
+  asiPointsUsed?: number;
+  freeAttrEdit?: boolean;
 };
 
 export type Character = CharacterListItem & {
@@ -39,7 +43,9 @@ export type CreateCharacterPayload = {
     carisma: number;
   };
   selectedSkills: number[];
+  pp?: number;
   money: number;
+  pl?: number;
   health: number;
   raceId?: number;
   subRaceId?: number;
@@ -83,11 +89,18 @@ export async function saveCharacter(character: any) {
   const payload = {
     health: character.health,
     maxHealth: character.maxHealth,
+    pp: character.pp ?? 0,
     money: character.money,
+    pl: character.pl ?? 0,
     xp: character.xp ?? 0,
+    asiPointsUsed: character.asiPointsUsed ?? 0,
     attributes: { ...(character.idAttribute ?? character.attributes) },
   };
   await http.put(`/characters/${character.id}`, payload);
+}
+
+export async function toggleFreeAttrEdit(id: number | string, value: boolean): Promise<void> {
+  await http.put(`/characters/${id}`, { freeAttrEdit: value });
 }
 
 export async function createCharacter(payload: CreateCharacterPayload) {

@@ -1,6 +1,8 @@
+import { useEffect } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   AppBar,
+  Badge,
   Box,
   Toolbar,
   Typography,
@@ -18,10 +20,13 @@ import AutoStoriesRoundedIcon from "@mui/icons-material/AutoStoriesRounded";
 import SettingsRoundedIcon from "@mui/icons-material/SettingsRounded";
 import PersonRoundedIcon from "@mui/icons-material/PersonRounded";
 import SchoolRoundedIcon from "@mui/icons-material/SchoolRounded";
+import LocalFireDepartmentRoundedIcon from "@mui/icons-material/LocalFireDepartmentRounded";
 
 import { ROUTES } from "../app/routes";
 import { useAuthStore } from "../modules/auth/auth.store";
 import { useCharactersStore } from "../modules/characters/characters.store";
+import { getSpells } from "../modules/spells/spells.api";
+import { getClassProgression, expectedSpellCounts } from "../modules/spells/spell-progression.data";
 
 const HEADER_H = 58;
 const NAV_H = 62;
@@ -43,6 +48,32 @@ export default function AppShell() {
   const charMatch = path.match(/^\/personagens\/(\d+)/);
   const charId = charMatch?.[1];
   const isCharacterContext = !!charId;
+  const isMasterContext = isMaster && !isCharacterContext;
+
+  const spellDeficit     = useCharactersStore((s) => s.spellDeficit);
+  const setSpellDeficit  = useCharactersStore((s) => s.setSpellDeficit);
+
+  // Compute spell deficit whenever the active character changes, regardless of which tab is open
+  useEffect(() => {
+    if (!charId || !selected) { setSpellDeficit(false); return; }
+    const className  = (selected as any)?.dndClass?.name ?? "";
+    const nivel      = (selected as any)?.nivel ?? 1;
+    const progression = getClassProgression(className);
+    if (!progression) { setSpellDeficit(false); return; }
+    let cancelled = false;
+    getSpells(charId).then((spells) => {
+      if (cancelled) return;
+      const known       = spells.filter((s: any) => !s.isRacial && !s.isCustom);
+      const ownedCant   = known.filter((s: any) => s.level === 0).length;
+      const ownedLev    = known.filter((s: any) => s.level > 0).length;
+      const expected    = expectedSpellCounts(progression, nivel);
+      const cantDef     = Math.max(0, expected.cantrips - ownedCant);
+      const levDef      = (progression.system === 'known' || progression.system === 'grimoire')
+        ? Math.max(0, expected.leveled - ownedLev) : 0;
+      setSpellDeficit(cantDef > 0 || levDef > 0);
+    }).catch(() => { if (!cancelled) setSpellDeficit(false); });
+    return () => { cancelled = true; };
+  }, [charId, selected, setSpellDeficit]);
 
   const charName      = selected?.name ?? "Personagem";
   const charNameShort = charName.length > 9 ? charName.slice(0, 9) + "…" : charName;
@@ -52,7 +83,26 @@ export default function AppShell() {
     { label: charNameShort, value: `/personagens/${charId}`, icon: <PersonRoundedIcon /> },
     { label: "Inventário",  value: NAV_INVENTARIO,           icon: <Inventory2RoundedIcon /> },
     { label: "Classe",      value: NAV_CLASSE,               icon: <SchoolRoundedIcon /> },
-    ...(hasSpells ? [{ label: "Grimório", value: NAV_GRIMORIO, icon: <AutoStoriesRoundedIcon /> }] : []),
+    ...(hasSpells ? [{
+      label: "Grimório",
+      value: NAV_GRIMORIO,
+      icon: (
+        <Badge
+          variant="dot"
+          invisible={!spellDeficit}
+          sx={{
+            "& .MuiBadge-dot": {
+              width: 8, height: 8,
+              bgcolor: "#f0c020",
+              boxShadow: "0 0 6px rgba(240,192,32,0.8)",
+              top: 2, right: 2,
+            },
+          }}
+        >
+          <AutoStoriesRoundedIcon />
+        </Badge>
+      ),
+    }] : []),
     ...(isMaster ? [{ label: "Config",   value: ROUTES.config, icon: <SettingsRoundedIcon /> }] : []),
   ];
 
@@ -200,7 +250,7 @@ export default function AppShell() {
       </AppBar>
 
       {/* ── Content ── */}
-      <Box sx={{ pt: `${HEADER_H}px`, pb: isCharacterContext ? `${NAV_H + 8}px` : 0 }}>
+      <Box sx={{ pt: `${HEADER_H}px`, pb: (isCharacterContext || isMasterContext) ? `${NAV_H + 8}px` : 0 }}>
         <Outlet />
       </Box>
 
@@ -311,6 +361,73 @@ export default function AppShell() {
           })}
         </BottomNavigation>
       </Paper>}
+
+      {/* ── Master Bottom Nav (fora do contexto de personagem) ── */}
+      {isMasterContext && (
+        <Paper
+          elevation={0}
+          sx={{
+            position: "fixed", left: 0, right: 0, bottom: 0,
+            pb: "env(safe-area-inset-bottom)",
+            bgcolor: "rgba(7, 9, 15, 0.82)",
+            backdropFilter: "blur(20px)",
+            borderTop: "1px solid rgba(255,255,255,0.055)",
+            "&::before": {
+              content: '""', position: "absolute", top: 0, left: "50%",
+              transform: "translateX(-50%)", width: "40%", height: "1px",
+              background: "linear-gradient(90deg, transparent, rgba(220,80,60,0.4), transparent)",
+            },
+          }}
+        >
+          <BottomNavigation
+            showLabels
+            value={path}
+            onChange={(_, val) => navigate(val)}
+            sx={{
+              height: NAV_H, bgcolor: "transparent",
+              "& .MuiBottomNavigationAction-root": {
+                minWidth: 0, px: 0.5, gap: 0.4,
+                color: "rgba(255,255,255,0.28)", transition: "color 0.18s",
+                "& .MuiBottomNavigationAction-label": { fontSize: "10.5px", fontWeight: 600, letterSpacing: 0.1, opacity: 1 },
+              },
+              "& .MuiBottomNavigationAction-root.Mui-selected": {
+                color: "rgba(255,255,255,0.92)",
+                "& svg": { filter: "drop-shadow(0 0 6px rgba(220,80,60,0.6))" },
+                "& .MuiBottomNavigationAction-label": { fontWeight: 700 },
+              },
+            }}
+          >
+            {[
+              { label: "Inimigos", value: ROUTES.inimigos, icon: <LocalFireDepartmentRoundedIcon /> },
+              { label: "Config",   value: ROUTES.config,   icon: <SettingsRoundedIcon /> },
+            ].map((item) => {
+              const active = path === item.value || path.startsWith(item.value + "/");
+              return (
+                <BottomNavigationAction
+                  key={item.value}
+                  label={item.label}
+                  value={item.value}
+                  icon={
+                    <Box sx={{
+                      position: "relative", display: "flex", alignItems: "center", justifyContent: "center",
+                      width: 36, height: 28, borderRadius: "8px", transition: "background 0.18s",
+                      bgcolor: active ? "rgba(220,80,60,0.15)" : "transparent",
+                      "&::before": active ? {
+                        content: '""', position: "absolute", top: -1, left: "50%",
+                        transform: "translateX(-50%)", width: 20, height: 2,
+                        borderRadius: "0 0 4px 4px",
+                        background: "linear-gradient(90deg, #DC5040, #FF8060)",
+                      } : {},
+                    }}>
+                      {item.icon}
+                    </Box>
+                  }
+                />
+              );
+            })}
+          </BottomNavigation>
+        </Paper>
+      )}
     </Box>
   );
 }

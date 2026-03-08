@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Box,
   Chip,
@@ -12,7 +12,7 @@ import {
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 
-import { ALL_DND_SPELLS, type DndSpellData } from "../../modules/spells/dnd-spells.data";
+import { getDndSpells, type DndSpellData } from "../../modules/spells/spells.api";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -228,9 +228,6 @@ function SchoolGroup({ school, spells }: { school: string; spells: DndSpellData[
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-const ALL_CLASSES = Array.from(
-  new Set(ALL_DND_SPELLS.flatMap((s) => s.classes))
-).sort();
 
 const inputSx = {
   "& .MuiInputLabel-root": { color: "rgba(255,255,255,0.35)", fontSize: 13 },
@@ -268,10 +265,17 @@ export default function MasterGrimoire() {
   const [search, setSearch]           = useState("");
   const [levelFilter, setLevelFilter] = useState<LevelFilter>("todos");
   const [classFilter, setClassFilter] = useState<string | null>(null);
+  const [allSpells, setAllSpells]     = useState<DndSpellData[]>([]);
+
+  useEffect(() => {
+    getDndSpells().then(setAllSpells).catch(() => {});
+  }, []);
+
+  const allClasses = useMemo(() => Array.from(new Set(allSpells.flatMap((s) => s.classes))).sort(), [allSpells]);
 
   const q = search.trim().toLowerCase();
 
-  const filtered = useMemo(() => ALL_DND_SPELLS.filter((s) => {
+  const filtered = useMemo(() => allSpells.filter((s) => {
     if (!matchesLevel(s, levelFilter)) return false;
     if (classFilter && !s.classes.includes(classFilter)) return false;
     if (q && !s.name.toLowerCase().includes(q) && !s.school?.toLowerCase().includes(q) && !s.classes.some((c) => c.toLowerCase().includes(q))) return false;
@@ -326,7 +330,7 @@ export default function MasterGrimoire() {
           active={classFilter === null}
           onClick={() => setClassFilter(null)}
         />
-        {ALL_CLASSES.map((cls) => (
+        {allClasses.map((cls) => (
           <FilterChip
             key={cls}
             label={cls}
