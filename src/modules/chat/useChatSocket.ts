@@ -61,7 +61,14 @@ export function useChatSocket(token: string | null, isMaster: boolean) {
   }
 
   useEffect(() => {
-    if (!token) return;
+    if (!token) {
+      // Usuário deslogou — limpa estado
+      setMessagesByPlayer({});
+      setOnlineUsers([]);
+      setConversationPartners([]);
+      setUnread({});
+      return;
+    }
     const socket = getChatSocket(token);
 
     socket.on("chat:myHistory", (history: ChatMessage[]) => {
@@ -115,6 +122,8 @@ export function useChatSocket(token: string | null, isMaster: boolean) {
       socket.off("chat:userConnected");
       socket.off("chat:userDisconnected");
       socket.off("connect", onConnect);
+      // Desconecta ao trocar de conta (token muda) ou deslogar
+      disconnectChatSocket();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, isMaster]);
