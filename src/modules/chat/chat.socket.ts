@@ -12,6 +12,7 @@ export function getChatSocket(token: string): Socket {
     auth: { token },
     transports: ["websocket"],
     reconnectionAttempts: 5,
+    extraHeaders: { "ngrok-skip-browser-warning": "1" },
   });
 
   return socket;
