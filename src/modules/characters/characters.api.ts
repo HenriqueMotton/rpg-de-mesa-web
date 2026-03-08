@@ -5,7 +5,7 @@ export type CharacterListItem = {
   name: string;
   pp: number;    // peças de prata
   money: number; // peças de ouro
-  pl: number;    // peças de platina
+  pc: number;    // peças de cobre
   health: number;
   maxHealth: number;
   nivel: number;
@@ -45,7 +45,7 @@ export type CreateCharacterPayload = {
   selectedSkills: number[];
   pp?: number;
   money: number;
-  pl?: number;
+  pc?: number;
   health: number;
   raceId?: number;
   subRaceId?: number;
@@ -91,7 +91,7 @@ export async function saveCharacter(character: any) {
     maxHealth: character.maxHealth,
     pp: character.pp ?? 0,
     money: character.money,
-    pl: character.pl ?? 0,
+    pc: character.pc ?? 0,
     xp: character.xp ?? 0,
     asiPointsUsed: character.asiPointsUsed ?? 0,
     attributes: { ...(character.idAttribute ?? character.attributes) },

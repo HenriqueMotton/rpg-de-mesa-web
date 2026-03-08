@@ -545,7 +545,7 @@ export default function SpellQuickPanel({ characterId }: Props) {
   return (
     <>
       {/* ── FAB ─────────────────────────────────────────────────────────────── */}
-      <Box sx={{ position: "fixed", bottom: 80, right: 16, zIndex: 1200 }}>
+      <Box sx={{ position: "fixed", bottom: 150, right: 16, zIndex: 1200 }}>
         <Tooltip title="Magias rápidas" placement="left">
           <Badge
             badgeContent={activeCount > 0 ? activeCount : 0}

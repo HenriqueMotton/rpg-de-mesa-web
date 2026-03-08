@@ -253,7 +253,7 @@ export default function CreateCharacterPage() {
   const setDraftPointsRemaining = useCharactersStore((s) => s.setDraftPointsRemaining);
   const setDraftPP              = useCharactersStore((s) => s.setDraftPP);
   const setDraftMoney           = useCharactersStore((s) => s.setDraftMoney);
-  const setDraftPL              = useCharactersStore((s) => s.setDraftPL);
+  const setDraftPC              = useCharactersStore((s) => s.setDraftPC);
   const setDraftHealth          = useCharactersStore((s) => s.setDraftHealth);
   const setDraftMaxHealth       = useCharactersStore((s) => s.setDraftMaxHealth);
   const toggleDraftSkill        = useCharactersStore((s) => s.toggleDraftSkill);
@@ -261,7 +261,7 @@ export default function CreateCharacterPage() {
   const setDraftSubRaceId       = useCharactersStore((s) => s.setDraftSubRaceId);
   const setDraftClass           = useCharactersStore((s) => s.setDraftClass);
 
-  const { name, attributes, pointsRemaining, pp, money, pl, health, maxHealth, selectedSkills, selectedRaceId, selectedSubRaceId, selectedClassId } = draft;
+  const { name, attributes, pointsRemaining, pp, money, pc, health, maxHealth, selectedSkills, selectedRaceId, selectedSubRaceId, selectedClassId } = draft;
 
   const [step,       setStep]       = useState<1 | 2 | 3 | 4>(1);
   const [saving,     setSaving]     = useState(false);
@@ -336,7 +336,7 @@ export default function CreateCharacterPage() {
         const avgRoll = Math.round(gd.dice * (gd.sides + 1) / 2);
         setDraftPP(0);
         setDraftMoney(avgRoll * gd.multiplier);
-        setDraftPL(0);
+        setDraftPC(0);
       }
     }
   }, [selectedClassId, classes]);
@@ -431,7 +431,7 @@ export default function CreateCharacterPage() {
         selectedSkills: selectedSkills.slice(0, 5),
         pp,
         money,
-        pl,
+        pc,
         health: Math.max(1, effectiveHp),
         raceId: selectedRaceId ?? undefined,
         subRaceId: selectedSubRaceId ?? undefined,
@@ -717,10 +717,10 @@ export default function CreateCharacterPage() {
                         <Typography sx={{ fontSize: 22, fontWeight: 900, color: "rgba(255,220,120,0.95)", lineHeight: 1 }}>{money}</Typography>
                         <Typography sx={{ fontSize: 13, fontWeight: 700, color: "rgba(255,210,100,0.6)" }}>po</Typography>
                       </Stack>
-                      {pl > 0 && (
+                      {pc > 0 && (
                         <Stack direction="row" alignItems="baseline" spacing={0.4}>
-                          <Typography sx={{ fontSize: 17, fontWeight: 900, color: "rgba(200,240,255,0.9)", lineHeight: 1 }}>{pl}</Typography>
-                          <Typography sx={{ fontSize: 11, fontWeight: 700, color: "rgba(160,220,255,0.55)" }}>pl</Typography>
+                          <Typography sx={{ fontSize: 17, fontWeight: 900, color: "rgba(205,127,50,0.9)", lineHeight: 1 }}>{pc}</Typography>
+                          <Typography sx={{ fontSize: 11, fontWeight: 700, color: "rgba(175,107,40,0.7)" }}>pc</Typography>
                         </Stack>
                       )}
                     </Stack>

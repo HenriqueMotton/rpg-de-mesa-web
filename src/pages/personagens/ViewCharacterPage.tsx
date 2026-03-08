@@ -205,7 +205,7 @@ function makeComparableState(c: any) {
   if (!c) return null;
   return {
     id: c.id, name: c.name,
-    pp: Number(c.pp ?? 0), money: Number(c.money ?? 0), pl: Number(c.pl ?? 0),
+    pp: Number(c.pp ?? 0), money: Number(c.money ?? 0), pc: Number(c.pc ?? 0),
     health: Number(c.health ?? 0), maxHealth: Number(c.maxHealth ?? 0),
     xp: Number(c.xp ?? 0),
     asiPointsUsed: Number(c.asiPointsUsed ?? 0),
@@ -340,8 +340,8 @@ export default function ViewCharacterPage() {
   const [goldAction, setGoldAction] = useState<"add" | "remove">("add");
   const [goldPP,     setGoldPP]     = useState("");
   const [goldPO,     setGoldPO]     = useState("");
-  const [goldPL,     setGoldPL]     = useState("");
-  const [cvtMode,    setCvtMode]    = useState<"po-pp" | "pl-po" | "pp-po" | "po-pl">("po-pp");
+  const [goldPC,     setGoldPC]     = useState("");
+  const [cvtMode,    setCvtMode]    = useState<"po-pp" | "pp-pc" | "pp-po" | "pc-pp">("po-pp");
   const [cvtQty,     setCvtQty]     = useState("");
 
   const [xpOpen,   setXpOpen]   = useState(false);
@@ -536,7 +536,7 @@ export default function ViewCharacterPage() {
     setError(null);
     setGoldTab(tab);
     setGoldAction(tab === "gastar" ? "remove" : "add");
-    setGoldPP(""); setGoldPO(""); setGoldPL("");
+    setGoldPP(""); setGoldPO(""); setGoldPC("");
     setCvtQty(""); setCvtMode("po-pp");
     setGoldOpen(true);
   }
@@ -546,17 +546,17 @@ export default function ViewCharacterPage() {
     setError(null);
     const pp = parseInt(goldPP, 10) || 0;
     const po = parseInt(goldPO, 10) || 0;
-    const pl = parseInt(goldPL, 10) || 0;
-    if (pp === 0 && po === 0 && pl === 0) { setError("Informe ao menos um valor."); return; }
+    const pc = parseInt(goldPC, 10) || 0;
+    if (pp === 0 && po === 0 && pc === 0) { setError("Informe ao menos um valor."); return; }
     const sign = goldAction === "add" ? 1 : -1;
     setDraft({
       ...draft,
       pp:    Math.max(0, Number(draft.pp    ?? 0) + sign * pp),
       money: Math.max(0, Number(draft.money ?? 0) + sign * po),
-      pl:    Math.max(0, Number(draft.pl    ?? 0) + sign * pl),
+      pc:    Math.max(0, Number(draft.pc    ?? 0) + sign * pc),
     });
     setGoldOpen(false);
-    setGoldPP(""); setGoldPO(""); setGoldPL("");
+    setGoldPP(""); setGoldPO(""); setGoldPC("");
   }
 
   function applyConversion() {
@@ -566,24 +566,24 @@ export default function ViewCharacterPage() {
     if (!Number.isFinite(qty) || qty < 1) { setError("Informe um valor válido maior que 0."); return; }
     const pp = Number(draft.pp    ?? 0);
     const po = Number(draft.money ?? 0);
-    const pl = Number(draft.pl    ?? 0);
-    let newPP = pp, newPO = po, newPL = pl;
+    const pc = Number(draft.pc    ?? 0);
+    let newPP = pp, newPO = po, newPC = pc;
     if (cvtMode === "po-pp") {
       if (po < qty) { setError(`Você só tem ${po} PO.`); return; }
       newPO = po - qty; newPP = pp + qty * 10;
-    } else if (cvtMode === "pl-po") {
-      if (pl < qty) { setError(`Você só tem ${pl} PL.`); return; }
-      newPL = pl - qty; newPO = po + qty * 10;
+    } else if (cvtMode === "pp-pc") {
+      if (pp < qty) { setError(`Você só tem ${pp} PP.`); return; }
+      newPP = pp - qty; newPC = pc + qty * 10;
     } else if (cvtMode === "pp-po") {
       const needed = qty * 10;
       if (pp < needed) { setError(`Você precisa de ${needed} PP (você tem ${pp}).`); return; }
       newPP = pp - needed; newPO = po + qty;
-    } else if (cvtMode === "po-pl") {
+    } else if (cvtMode === "pc-pp") {
       const needed = qty * 10;
-      if (po < needed) { setError(`Você precisa de ${needed} PO (você tem ${po}).`); return; }
-      newPO = po - needed; newPL = pl + qty;
+      if (pc < needed) { setError(`Você precisa de ${needed} PC (você tem ${pc}).`); return; }
+      newPC = pc - needed; newPP = pp + qty;
     }
-    setDraft({ ...draft, pp: newPP, money: newPO, pl: newPL });
+    setDraft({ ...draft, pp: newPP, money: newPO, pc: newPC });
     setGoldOpen(false); setCvtQty("");
   }
 
@@ -1037,11 +1037,11 @@ export default function ViewCharacterPage() {
                       Carteira
                     </Typography>
                     <Typography sx={{ fontSize: 13.5, fontWeight: 900, lineHeight: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      <Typography component="span" sx={{ color: "rgba(180,240,255,0.92)", fontWeight: 900 }}>{Number((draft as any).pl ?? 0)} PL</Typography>
-                      <Typography component="span" sx={{ color: "rgba(255,255,255,0.22)", mx: 0.6 }}>·</Typography>
                       <Typography component="span" sx={{ color: "rgba(255,220,120,0.92)", fontWeight: 900 }}>{Number((draft as any).money ?? 0)} PO</Typography>
                       <Typography component="span" sx={{ color: "rgba(255,255,255,0.22)", mx: 0.6 }}>·</Typography>
                       <Typography component="span" sx={{ color: "rgba(200,215,235,0.85)", fontWeight: 900 }}>{Number((draft as any).pp ?? 0)} PP</Typography>
+                      <Typography component="span" sx={{ color: "rgba(255,255,255,0.22)", mx: 0.6 }}>·</Typography>
+                      <Typography component="span" sx={{ color: "rgba(205,127,50,0.9)", fontWeight: 900 }}>{Number((draft as any).pc ?? 0)} PC</Typography>
                     </Typography>
                   </Box>
                   <AddRoundedIcon sx={{ fontSize: 16, color: "rgba(255,195,60,0.32)", flexShrink: 0 }} />
@@ -1348,9 +1348,9 @@ export default function ViewCharacterPage() {
           {/* Saldo atual */}
           <Stack direction="row" spacing={1} justifyContent="center">
             {[
-              { label: "PL", value: Number((draft as any)?.pl    ?? 0), color: "rgba(180,240,255,0.92)" },
               { label: "PO", value: Number((draft as any)?.money ?? 0), color: "rgba(255,220,120,0.92)" },
               { label: "PP", value: Number((draft as any)?.pp    ?? 0), color: "rgba(200,215,235,0.85)" },
+              { label: "PC", value: Number((draft as any)?.pc    ?? 0), color: "rgba(205,127,50,0.9)" },
             ].map(({ label, value, color }) => (
               <Box key={label} sx={{ flex: 1, textAlign: "center", px: 1, py: 0.9, borderRadius: "12px", bgcolor: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
                 <Typography sx={{ fontSize: 18, fontWeight: 900, color, lineHeight: 1 }}>{value}</Typography>
@@ -1384,9 +1384,9 @@ export default function ViewCharacterPage() {
 
           {/* GANHAR / GASTAR */}
           {goldTab !== "converter" && ([
-            { label: "Prata (PP)",   value: goldPP,  set: setGoldPP,  cur: Number((draft as any)?.pp    ?? 0), color: "rgba(200,215,235,0.85)", icon: "🥈" },
-            { label: "Ouro (PO)",    value: goldPO,  set: setGoldPO,  cur: Number((draft as any)?.money ?? 0), color: "rgba(255,220,120,0.92)", icon: "🥇" },
-            { label: "Platina (PL)", value: goldPL,  set: setGoldPL,  cur: Number((draft as any)?.pl    ?? 0), color: "rgba(180,240,255,0.92)", icon: "💎" },
+            { label: "Ouro (PO)",   value: goldPO,  set: setGoldPO,  cur: Number((draft as any)?.money ?? 0), color: "rgba(255,220,120,0.92)", icon: "🥇" },
+            { label: "Prata (PP)",  value: goldPP,  set: setGoldPP,  cur: Number((draft as any)?.pp    ?? 0), color: "rgba(200,215,235,0.85)", icon: "🥈" },
+            { label: "Cobre (PC)",  value: goldPC,  set: setGoldPC,  cur: Number((draft as any)?.pc    ?? 0), color: "rgba(205,127,50,0.9)",   icon: "🪙" },
           ].map(({ label, value, set, cur, color, icon }) => {
             const delta = parseInt(value, 10) || 0;
             const after = goldTab === "ganhar" ? cur + delta : Math.max(0, cur - delta);
@@ -1425,11 +1425,11 @@ export default function ViewCharacterPage() {
               {/* 4 opções de conversão */}
               <Stack spacing={0.75}>
                 {([
-                  { mode: "po-pp" as const, from: "PO", to: "PP", rate: "1 PO → 10 PP", label: "Fragmentar Ouro",    desc: "trocar ouro por prata" },
-                  { mode: "pl-po" as const, from: "PL", to: "PO", rate: "1 PL → 10 PO", label: "Fragmentar Platina", desc: "trocar platina por ouro" },
-                  { mode: "pp-po" as const, from: "PP", to: "PO", rate: "10 PP → 1 PO", label: "Consolidar Prata",   desc: "fundir prata em ouro" },
-                  { mode: "po-pl" as const, from: "PO", to: "PL", rate: "10 PO → 1 PL", label: "Consolidar Ouro",   desc: "fundir ouro em platina" },
-                ] as { mode: "po-pp" | "pl-po" | "pp-po" | "po-pl"; from: string; to: string; rate: string; label: string; desc: string }[]).map(({ mode, rate, label, desc }) => {
+                  { mode: "po-pp" as const, from: "PO", to: "PP", rate: "1 PO → 10 PP",  label: "Fragmentar Ouro",  desc: "trocar ouro por prata" },
+                  { mode: "pp-pc" as const, from: "PP", to: "PC", rate: "1 PP → 10 PC",  label: "Fragmentar Prata", desc: "trocar prata por cobre" },
+                  { mode: "pp-po" as const, from: "PP", to: "PO", rate: "10 PP → 1 PO",  label: "Consolidar Prata", desc: "fundir prata em ouro" },
+                  { mode: "pc-pp" as const, from: "PC", to: "PP", rate: "10 PC → 1 PP",  label: "Consolidar Cobre", desc: "fundir cobre em prata" },
+                ] as { mode: "po-pp" | "pp-pc" | "pp-po" | "pc-pp"; from: string; to: string; rate: string; label: string; desc: string }[]).map(({ mode, rate, label, desc }) => {
                   const active = cvtMode === mode;
                   return (
                     <Box key={mode} onClick={() => { setCvtMode(mode); setError(null); setCvtQty(""); }}
@@ -1460,7 +1460,7 @@ export default function ViewCharacterPage() {
                 <Typography sx={{ fontSize: 11.5, color: "rgba(255,255,255,0.35)", mb: 0.75 }}>
                   Quantidade a converter{" "}
                   <Typography component="span" sx={{ color: "rgba(175,150,255,0.7)", fontWeight: 700 }}>
-                    ({cvtMode === "po-pp" ? "de PO" : cvtMode === "pl-po" ? "de PL" : cvtMode === "pp-po" ? "de dezenas de PP" : "de dezenas de PO"})
+                    ({cvtMode === "po-pp" ? "de PO" : cvtMode === "pp-pc" ? "de PP" : cvtMode === "pp-po" ? "de dezenas de PP" : "de dezenas de PC"})
                   </Typography>
                 </Typography>
                 <TextField
@@ -1477,9 +1477,9 @@ export default function ViewCharacterPage() {
                   if (!Number.isFinite(qty) || qty < 1) return null;
                   let fromStr = "", toStr = "";
                   if (cvtMode === "po-pp") { fromStr = `${qty} PO`; toStr = `${qty * 10} PP`; }
-                  else if (cvtMode === "pl-po") { fromStr = `${qty} PL`; toStr = `${qty * 10} PO`; }
+                  else if (cvtMode === "pp-pc") { fromStr = `${qty} PP`; toStr = `${qty * 10} PC`; }
                   else if (cvtMode === "pp-po") { fromStr = `${qty * 10} PP`; toStr = `${qty} PO`; }
-                  else if (cvtMode === "po-pl") { fromStr = `${qty * 10} PO`; toStr = `${qty} PL`; }
+                  else if (cvtMode === "pc-pp") { fromStr = `${qty * 10} PC`; toStr = `${qty} PP`; }
                   return (
                     <Typography sx={{ fontSize: 11.5, color: "rgba(255,255,255,0.3)", mt: 0.6, pl: 0.5 }}>
                       Gastar <b style={{ color: "rgba(255,200,100,0.85)" }}>{fromStr}</b>{" "}→ receber <b style={{ color: "rgba(130,230,180,0.9)" }}>{toStr}</b>

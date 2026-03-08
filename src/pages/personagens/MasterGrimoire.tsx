@@ -280,7 +280,7 @@ export default function MasterGrimoire() {
     if (classFilter && !s.classes.includes(classFilter)) return false;
     if (q && !s.name.toLowerCase().includes(q) && !s.school?.toLowerCase().includes(q) && !s.classes.some((c) => c.toLowerCase().includes(q))) return false;
     return true;
-  }), [q, levelFilter, classFilter]);
+  }), [allSpells, q, levelFilter, classFilter]);
 
   // Group by school
   const groups = useMemo(() => {

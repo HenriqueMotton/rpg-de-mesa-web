@@ -15,12 +15,18 @@ import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
 import SportsMartialArtsRoundedIcon from "@mui/icons-material/SportsMartialArtsRounded";
 import HotelRoundedIcon from "@mui/icons-material/HotelRounded";
 import AutoStoriesRoundedIcon from "@mui/icons-material/AutoStoriesRounded";
+import PeopleAltRoundedIcon from "@mui/icons-material/PeopleAltRounded";
+import LocalOfferRoundedIcon from "@mui/icons-material/LocalOfferRounded";
+import BugReportRoundedIcon from "@mui/icons-material/BugReportRounded";
 import { Glass, Noise, OrbSide, OrbTop, Page, PageLabel, PageTitle } from "./personagens/ViewCharacter.styles";
 import InitiativeManager from "./personagens/InitiativeManager";
 import RestManager from "./personagens/RestManager";
 import MasterGrimoire from "./personagens/MasterGrimoire";
+import NpcGenerator from "./personagens/NpcGenerator";
+import PriceTable from "./personagens/PriceTable";
+import BugReportsPanel from "./personagens/BugReportsPanel";
 
-type Section = "initiative" | "rest" | "grimoire";
+type Section = "initiative" | "rest" | "grimoire" | "npc" | "prices" | "bugs";
 
 const MENU_ITEMS: { id: Section; label: string; icon: React.ReactNode }[] = [
   {
@@ -38,12 +44,30 @@ const MENU_ITEMS: { id: Section; label: string; icon: React.ReactNode }[] = [
     label: "Grimório",
     icon: <AutoStoriesRoundedIcon sx={{ fontSize: 18 }} />,
   },
+  {
+    id: "npc",
+    label: "Gerador de NPC",
+    icon: <PeopleAltRoundedIcon sx={{ fontSize: 18 }} />,
+  },
+  {
+    id: "prices",
+    label: "Tabela de preços",
+    icon: <LocalOfferRoundedIcon sx={{ fontSize: 18 }} />,
+  },
+  {
+    id: "bugs",
+    label: "Bug Reports",
+    icon: <BugReportRoundedIcon sx={{ fontSize: 18 }} />,
+  },
 ];
 
 function SectionContent({ section }: { section: Section }) {
-  if (section === "initiative") return <InitiativeManager />;
+  if (section === "initiative") return <InitiativeManager isMaster />;
   if (section === "rest")       return <RestManager />;
   if (section === "grimoire")   return <MasterGrimoire />;
+  if (section === "npc")        return <NpcGenerator />;
+  if (section === "prices")     return <PriceTable isMaster />;
+  if (section === "bugs")       return <BugReportsPanel />;
   return null;
 }
 

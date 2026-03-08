@@ -1,10 +1,17 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   AppBar,
   Badge,
   Box,
+  Button,
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  Stack,
+  TextField,
   Toolbar,
+  Tooltip,
   Typography,
   IconButton,
   BottomNavigation,
@@ -13,6 +20,8 @@ import {
 } from "@mui/material";
 
 import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
+import BugReportRoundedIcon from "@mui/icons-material/BugReportRounded";
+import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import GroupRoundedIcon from "@mui/icons-material/GroupRounded";
 import CasinoRoundedIcon from "@mui/icons-material/CasinoRounded";
 import Inventory2RoundedIcon from "@mui/icons-material/Inventory2Rounded";
@@ -22,8 +31,10 @@ import PersonRoundedIcon from "@mui/icons-material/PersonRounded";
 import SchoolRoundedIcon from "@mui/icons-material/SchoolRounded";
 import LocalFireDepartmentRoundedIcon from "@mui/icons-material/LocalFireDepartmentRounded";
 
+import ChatWidget from "../modules/chat/ChatWidget";
 import { ROUTES } from "../app/routes";
 import { useAuthStore } from "../modules/auth/auth.store";
+import { submitBugReport } from "../modules/bug-reports/bug-reports.api";
 import { useCharactersStore } from "../modules/characters/characters.store";
 import { getSpells } from "../modules/spells/spells.api";
 import { getClassProgression, expectedSpellCounts } from "../modules/spells/spell-progression.data";
@@ -74,6 +85,32 @@ export default function AppShell() {
     }).catch(() => { if (!cancelled) setSpellDeficit(false); });
     return () => { cancelled = true; };
   }, [charId, selected, setSpellDeficit]);
+
+  const [bugOpen,    setBugOpen]    = useState(false);
+  const [bugTitle,   setBugTitle]   = useState("");
+  const [bugDesc,    setBugDesc]    = useState("");
+  const [bugSending, setBugSending] = useState(false);
+  const [bugSent,    setBugSent]    = useState(false);
+
+  async function handleSubmitBug() {
+    if (!bugTitle.trim() || !bugDesc.trim()) return;
+    setBugSending(true);
+    try {
+      await submitBugReport({
+        title: bugTitle.trim(),
+        description: bugDesc.trim(),
+        page: path || "/",
+        characterName: selected?.name ?? undefined,
+      });
+      setBugSent(true);
+      setTimeout(() => {
+        setBugOpen(false);
+        setBugTitle(""); setBugDesc(""); setBugSent(false);
+      }, 1800);
+    } finally {
+      setBugSending(false);
+    }
+  }
 
   const charName      = selected?.name ?? "Personagem";
   const charNameShort = charName.length > 9 ? charName.slice(0, 9) + "…" : charName;
@@ -225,6 +262,29 @@ export default function AppShell() {
             </IconButton>
           )}
 
+          {/* Bug Report */}
+          <Tooltip title="Reportar bug">
+            <IconButton
+              onClick={() => { setBugOpen(true); setBugTitle(""); setBugDesc(""); setBugSent(false); }}
+              size="small"
+              sx={{
+                width: 34, height: 34,
+                color: "rgba(255,255,255,0.4)",
+                border: "1px solid rgba(255,255,255,0.07)",
+                borderRadius: "9px",
+                bgcolor: "rgba(255,255,255,0.03)",
+                transition: "all 0.18s",
+                "&:hover": {
+                  color: "#ef4444",
+                  bgcolor: "rgba(239,68,68,0.1)",
+                  borderColor: "rgba(239,68,68,0.22)",
+                },
+              }}
+            >
+              <BugReportRoundedIcon sx={{ fontSize: 16 }} />
+            </IconButton>
+          </Tooltip>
+
           {/* Logout */}
           <IconButton
             onClick={() => { logout(); navigate(ROUTES.login); }}
@@ -249,10 +309,122 @@ export default function AppShell() {
         </Toolbar>
       </AppBar>
 
+      {/* ── Bug Report Dialog ── */}
+      <Dialog
+        open={bugOpen}
+        onClose={() => setBugOpen(false)}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{
+          sx: {
+            bgcolor: "rgba(14,11,28,0.98)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            borderRadius: "16px",
+            backdropFilter: "blur(20px)",
+          },
+        }}
+      >
+        <DialogTitle sx={{ pb: 1 }}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between">
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <BugReportRoundedIcon sx={{ fontSize: 18, color: "#ef4444" }} />
+              <Typography sx={{ fontWeight: 800, fontSize: 15, color: "rgba(255,255,255,0.9)" }}>
+                Reportar Bug
+              </Typography>
+            </Stack>
+            <IconButton onClick={() => setBugOpen(false)} size="small" sx={{ color: "rgba(255,255,255,0.35)" }}>
+              <CloseRoundedIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          </Stack>
+        </DialogTitle>
+        <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 1.5, pt: "4px !important" }}>
+          <Box sx={{
+            display: "flex", alignItems: "flex-start", gap: 1,
+            px: 1.25, py: 0.9, borderRadius: "10px",
+            bgcolor: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.15)",
+          }}>
+            <Typography sx={{ fontSize: 12, color: "rgba(255,255,255,0.45)", lineHeight: 1.5 }}>
+              Descreva o problema com o máximo de detalhes para que possamos resolver mais rápido!
+            </Typography>
+          </Box>
+
+          <TextField
+            label="Título resumido"
+            value={bugTitle}
+            onChange={(e) => setBugTitle(e.target.value)}
+            size="small"
+            fullWidth
+            placeholder="ex: HP não atualiza ao tomar dano"
+            sx={{
+              "& .MuiOutlinedInput-root": {
+                bgcolor: "rgba(255,255,255,0.04)",
+                "& fieldset": { borderColor: "rgba(255,255,255,0.1)" },
+                "&:hover fieldset": { borderColor: "rgba(255,255,255,0.2)" },
+                "&.Mui-focused fieldset": { borderColor: "rgba(239,68,68,0.4)" },
+              },
+              "& .MuiInputLabel-root": { color: "rgba(255,255,255,0.4)", fontSize: 13 },
+              "& .MuiInputBase-input": { color: "rgba(255,255,255,0.85)", fontSize: 13 },
+            }}
+          />
+
+          <TextField
+            label="Descrição detalhada"
+            value={bugDesc}
+            onChange={(e) => setBugDesc(e.target.value)}
+            multiline
+            minRows={3}
+            fullWidth
+            placeholder="O que aconteceu? O que você esperava? Quais passos você fez?"
+            sx={{
+              "& .MuiOutlinedInput-root": {
+                bgcolor: "rgba(255,255,255,0.04)",
+                "& fieldset": { borderColor: "rgba(255,255,255,0.1)" },
+                "&:hover fieldset": { borderColor: "rgba(255,255,255,0.2)" },
+                "&.Mui-focused fieldset": { borderColor: "rgba(239,68,68,0.4)" },
+              },
+              "& .MuiInputLabel-root": { color: "rgba(255,255,255,0.4)", fontSize: 13 },
+              "& .MuiInputBase-input": { color: "rgba(255,255,255,0.85)", fontSize: 13 },
+            }}
+          />
+
+          <Stack direction="row" spacing={1} justifyContent="flex-end" sx={{ mt: 0.5 }}>
+            <Button
+              onClick={() => setBugOpen(false)}
+              variant="text"
+              startIcon={<CloseRoundedIcon />}
+              sx={{ color: "rgba(255,255,255,0.35)", textTransform: "none", fontWeight: 700, fontSize: 13 }}
+            >
+              Cancelar
+            </Button>
+            <Box
+              component="button"
+              disabled={bugSending || bugSent || !bugTitle.trim() || !bugDesc.trim()}
+              onClick={handleSubmitBug}
+              sx={{
+                px: 2.5, py: 0.75, border: "none", borderRadius: "10px",
+                bgcolor: bugSent ? "rgba(34,197,94,0.18)" : "rgba(239,68,68,0.18)",
+                color: bugSent ? "#22c55e" : "#ef4444",
+                fontWeight: 800, fontSize: 13, cursor: "pointer",
+                transition: "all .15s",
+                "&:hover:not(:disabled)": {
+                  bgcolor: bugSent ? "rgba(34,197,94,0.26)" : "rgba(239,68,68,0.26)",
+                },
+                "&:disabled": { opacity: bugSent ? 1 : 0.4, cursor: "not-allowed" },
+              }}
+            >
+              {bugSent ? "✓ Enviado!" : bugSending ? "Enviando…" : "Enviar"}
+            </Box>
+          </Stack>
+        </DialogContent>
+      </Dialog>
+
       {/* ── Content ── */}
       <Box sx={{ pt: `${HEADER_H}px`, pb: (isCharacterContext || isMasterContext) ? `${NAV_H + 8}px` : 0 }}>
         <Outlet />
       </Box>
+
+      {/* ── Chat Widget ── */}
+      <ChatWidget />
 
       {/* ── Bottom Nav (só no contexto de personagem) ── */}
       {isCharacterContext && <Paper

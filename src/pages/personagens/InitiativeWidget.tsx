@@ -41,7 +41,7 @@ export default function InitiativeWidget() {
 
   const myCharId = (selected as any)?.id;
 
-  if (myCharId && !entries.some((e) => e.characterId === myCharId)) return null;
+  if (myCharId && !entries.some((e) => e.characterId != null && e.characterId === myCharId)) return null;
 
   return (
     <Box
@@ -98,11 +98,11 @@ export default function InitiativeWidget() {
           {/* Entries */}
           <Stack spacing={0} sx={{ py: 0.5 }}>
             {entries.map((entry, i) => {
-              const isMe = entry.characterId === myCharId;
+              const isMe = entry.characterId != null && entry.characterId === myCharId;
               const isCurrent = i === currentTurnIndex;
               return (
                 <Stack
-                  key={entry.characterId}
+                  key={`${entry.characterId ?? "m"}-${i}`}
                   direction="row"
                   alignItems="center"
                   sx={{

@@ -16,7 +16,7 @@ type CharacterDraft = {
 
   pp: number;
   money: number; // po
-  pl: number;
+  pc: number;
   health: number;
   maxHealth: number;
 
@@ -40,7 +40,7 @@ const DEFAULT_DRAFT: CharacterDraft = {
 
   pp: 0,
   money: 0,
-  pl: 0,
+  pc: 0,
   health: 8,
   maxHealth: 8,
 
@@ -71,7 +71,7 @@ type CharactersStore = {
 
   setDraftPP: (v: number) => void;
   setDraftMoney: (v: number) => void;
-  setDraftPL: (v: number) => void;
+  setDraftPC: (v: number) => void;
   setDraftHealth: (v: number) => void;
   setDraftMaxHealth: (v: number) => void;
 
@@ -110,7 +110,7 @@ export const useCharactersStore = create<CharactersStore>((set) => ({
 
   setDraftPP: (pp) => set((s) => ({ draft: { ...s.draft, pp } })),
   setDraftMoney: (money) => set((s) => ({ draft: { ...s.draft, money } })),
-  setDraftPL: (pl) => set((s) => ({ draft: { ...s.draft, pl } })),
+  setDraftPC: (pc) => set((s) => ({ draft: { ...s.draft, pc } })),
   setDraftHealth: (health) => set((s) => ({ draft: { ...s.draft, health } })),
   setDraftMaxHealth: (maxHealth) =>
     set((s) => ({ draft: { ...s.draft, maxHealth } })),
