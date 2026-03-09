@@ -320,12 +320,14 @@ export default function InventorySection({ characterId }: Props) {
   const wui = weightBarConfig(weightPct);
 
   const formDialog = (
+    key: string,
     title: string,
     open: boolean,
     onClose: () => void,
     onConfirm: () => void,
   ) => (
     <AppDialog
+      key={key}
       open={open}
       onClose={onClose}
       title={title}
@@ -702,10 +704,11 @@ export default function InventorySection({ characterId }: Props) {
       )}
 
       {/* Add dialog */}
-      {formDialog("Adicionar Item", addOpen, () => setAddOpen(false), handleAdd)}
+      {formDialog("add", "Adicionar Item", addOpen, () => setAddOpen(false), handleAdd)}
 
       {/* Edit dialog */}
       {formDialog(
+        "edit",
         "Editar Item",
         editItem !== null,
         () => setEditItem(null),
