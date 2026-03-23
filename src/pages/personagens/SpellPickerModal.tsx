@@ -313,7 +313,7 @@ export default function SpellPickerModal({ open, target, saving, onClose, onConf
             {[
               { v: "todos",   l: "Todos" },
               { v: "truques", l: "Truques" },
-              { v: "leveled", l: "Leveled" },
+              { v: "leveled", l: "Magias" },
             ].map(({ v, l }) => {
               const act = levelFilter === v;
               return (

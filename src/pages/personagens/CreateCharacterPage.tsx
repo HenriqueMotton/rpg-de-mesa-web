@@ -1997,7 +1997,7 @@ export default function CreateCharacterPage() {
       </Container>
 
       {/* ── Floating points counter (portal to escape overflow:hidden) ── */}
-      {step === 4 && createPortal(
+      {step === 5 && createPortal(
         <Box sx={{
           position: "fixed",
           top: 60,
