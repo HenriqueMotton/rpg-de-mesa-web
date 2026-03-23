@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Box,
-  Chip,
   CircularProgress,
   IconButton,
   Stack,
@@ -11,9 +10,14 @@ import {
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import ExpandLessRoundedIcon from "@mui/icons-material/ExpandLessRounded";
 import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
+import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
 
 import AppDialog, { AppDialogConfirmButton } from "./AppDialog";
 import { listSkills, type Skill } from "../../modules/characters/characters.api";
+
+function normalize(s: string) {
+  return s.toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
 
 type Props = {
   open: boolean;
@@ -21,9 +25,10 @@ type Props = {
   selected: number[];
   toggle: (skillId: number) => void;
   max: number;
+  allowedSkillNames?: string[]; // se fornecido, filtra apenas essas perícias
 };
 
-export default function SkillsDialog({ open, onClose, selected, toggle, max }: Props) {
+export default function SkillsDialog({ open, onClose, selected, toggle, max, allowedSkillNames }: Props) {
   const [skills, setSkills] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,24 +56,26 @@ export default function SkillsDialog({ open, onClose, selected, toggle, max }: P
     return () => { alive = false; };
   }, [open]);
 
+  const filteredSkills = useMemo(() => {
+    if (!allowedSkillNames || allowedSkillNames.length === 0) return skills;
+    const allowed = allowedSkillNames.map(normalize);
+    return skills.filter((sk) => allowed.includes(normalize(sk.name)));
+  }, [skills, allowedSkillNames]);
+
   const handleToggle = (skillId: number) => {
     setAnimatingId(skillId);
     toggle(skillId);
     setTimeout(() => setAnimatingId(null), 300);
   };
 
-  const headerText = useMemo(
-    () => `Selecionar Perícias`,
-    []
-  );
-
   const progressPct = (selected.length / max) * 100;
+  const hasFilter = allowedSkillNames && allowedSkillNames.length > 0;
 
   return (
     <AppDialog
       open={open}
       onClose={onClose}
-      title={headerText}
+      title="Selecionar Perícias"
       dividers
       actions={
         <AppDialogConfirmButton onClick={onClose} sx={{ px: 4, py: 1.2, borderRadius: "12px" }}>
@@ -76,6 +83,25 @@ export default function SkillsDialog({ open, onClose, selected, toggle, max }: P
         </AppDialogConfirmButton>
       }
     >
+      {/* Nota de classe */}
+      {hasFilter && (
+        <Box sx={{
+          mb: 2,
+          px: 1.5, py: 1.1,
+          borderRadius: "12px",
+          bgcolor: "rgba(120,85,255,0.08)",
+          border: "1px solid rgba(120,85,255,0.22)",
+          display: "flex",
+          alignItems: "center",
+          gap: 1,
+        }}>
+          <AutoAwesomeRoundedIcon sx={{ fontSize: 14, color: "rgba(180,150,255,0.8)", flexShrink: 0 }} />
+          <Typography sx={{ fontSize: 12, color: "rgba(180,155,255,0.85)", lineHeight: 1.45 }}>
+            Exibindo apenas as perícias disponíveis para sua classe.
+          </Typography>
+        </Box>
+      )}
+
       {/* Progress bar + counter */}
       <Box sx={{ mb: 2.5 }}>
         <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
@@ -147,9 +173,15 @@ export default function SkillsDialog({ open, onClose, selected, toggle, max }: P
             Carregando perícias…
           </Typography>
         </Box>
+      ) : filteredSkills.length === 0 && hasFilter ? (
+        <Box sx={{ py: 4, textAlign: "center" }}>
+          <Typography sx={{ fontSize: 13, color: "rgba(255,255,255,0.3)", fontStyle: "italic" }}>
+            Nenhuma perícia encontrada para esta classe.
+          </Typography>
+        </Box>
       ) : (
         <Stack spacing={0.75}>
-          {skills.map((sk, i) => {
+          {filteredSkills.map((sk, i) => {
             const isSelected = selected.includes(sk.id);
             const isDisabled = selected.length >= max && !isSelected;
             const isExpanded = expandedId === sk.id;

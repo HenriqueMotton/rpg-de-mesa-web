@@ -421,11 +421,11 @@ export default function SpellQuickPanel({ characterId }: Props) {
     setCustomUnit("m");
     setUseCustom(false);
 
-    // Pre-select lowest available slot >= spell level (or spell level itself if none available)
+    // Pre-select lowest available slot >= spell level; null if none available
     if (spell.level > 0) {
       const bestLevel = slotRows.find(
         (r) => r.level >= spell.level && r.used < r.max
-      )?.level ?? spell.level;
+      )?.level ?? null; // null = no slot available
       setSelectedSlotLevel(bestLevel);
     } else {
       setSelectedSlotLevel(null); // cantrip — no slot needed
@@ -437,19 +437,25 @@ export default function SpellQuickPanel({ characterId }: Props) {
     slotLevel: number | null,
     activeUntil: string | null,
   ) {
+    // Leveled spells MUST consume a slot — abort if none was selected or available
+    if (spell.level > 0) {
+      if (slotLevel === null) return;
+      const key = String(slotLevel);
+      const currentUsed = Number(usedSlots[key] ?? 0);
+      const slotMax = maxSlotsArr[slotLevel - 1] ?? 0;
+      if (currentUsed >= slotMax) return; // slot fully spent — block the cast
+    }
+
     setSaving(true);
     try {
       if (spell.level > 0 && slotLevel !== null) {
         const key = String(slotLevel);
         const currentUsed = Number(usedSlots[key] ?? 0);
-        const slotMax = maxSlotsArr[slotLevel - 1] ?? 0;
-        if (currentUsed < slotMax) {
-          const newSlots = { ...usedSlots, [key]: currentUsed + 1 };
-          setUsedSlots(newSlots);
-          setSlotPersisting(true);
-          await updateSpellSlots(characterId, newSlots);
-          setSlotPersisting(false);
-        }
+        const newSlots = { ...usedSlots, [key]: currentUsed + 1 };
+        setUsedSlots(newSlots);
+        setSlotPersisting(true);
+        await updateSpellSlots(characterId, newSlots);
+        setSlotPersisting(false);
       }
       const updated = await updateSpell(spell.id, { isActive: true, activeUntil });
       setSpells((prev) => prev.map((s) => (s.id === spell.id ? updated : s)));
@@ -461,6 +467,8 @@ export default function SpellQuickPanel({ characterId }: Props) {
 
   async function confirmActivate() {
     if (!modalSpell) return;
+    // Block leveled spells if no slot is selected or available
+    if (modalSpell.level > 0 && (selectedSlotLevel === null || noSlotsAvailable)) return;
 
     let activeUntil: string | null = null;
 
@@ -745,7 +753,7 @@ export default function SpellQuickPanel({ characterId }: Props) {
             <Box sx={{ flex: 1 }} />
             <AppDialogConfirmButton
               onClick={confirmActivate}
-              disabled={saving}
+              disabled={saving || (!!modalSpell && modalSpell.level > 0 && (noSlotsAvailable || selectedSlotLevel === null))}
               sx={{ px: 3.5, py: 1.1, borderRadius: "10px" }}
             >
               {saving
@@ -827,8 +835,8 @@ export default function SpellQuickPanel({ characterId }: Props) {
               )}
 
               {noSlotsAvailable && (
-                <Typography sx={{ fontSize: 11, color: "rgba(255,160,80,0.6)", mt: 1 }}>
-                  Sem slots disponíveis. Você pode conjurar assim mesmo (sem gastar slot).
+                <Typography sx={{ fontSize: 11, color: "rgba(255,100,100,0.7)", mt: 1 }}>
+                  Sem slots disponíveis para esta magia. Realize um Descanso Longo para recuperá-los.
                 </Typography>
               )}
             </Box>

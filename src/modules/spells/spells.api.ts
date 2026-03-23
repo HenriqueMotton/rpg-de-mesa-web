@@ -83,6 +83,11 @@ export async function getSpells(characterId: number | string): Promise<Character
   return data;
 }
 
+export async function getMasterCharacterSpells(characterId: number | string): Promise<CharacterSpell[]> {
+  const { data } = await http.get<CharacterSpell[]>(`/spells/master/character/${characterId}`);
+  return data;
+}
+
 export async function addSpell(
   characterId: number | string,
   payload: SpellPayload,

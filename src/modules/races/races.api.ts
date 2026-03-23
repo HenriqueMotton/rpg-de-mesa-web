@@ -14,12 +14,32 @@ export type RaceTrait = {
   description: string;
 };
 
+export type RaceSkillGrants = {
+  fixed: string[];
+  choose?: {
+    count: number;
+    from: string[];
+  };
+};
+
+export type RaceSpellGrant = {
+  name: string;
+  minCharLevel?: number;
+};
+
+export type SubRaceCantripChoice = {
+  count: number;
+  from: string; // nome da classe para filtrar, ex: 'Mago'
+};
+
 export type SubRace = {
   id: number;
   name: string;
   description: string;
   bonuses: RaceBonuses;
   traits: RaceTrait[];
+  spellGrants?: RaceSpellGrant[];
+  cantripChoice?: SubRaceCantripChoice | null;
 };
 
 export type Race = {
@@ -29,6 +49,7 @@ export type Race = {
   bonuses: RaceBonuses;
   traits: RaceTrait[];
   subRaces: SubRace[];
+  skillGrants?: RaceSkillGrants;
 };
 
 export async function listRaces(): Promise<Race[]> {

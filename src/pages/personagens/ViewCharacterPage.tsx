@@ -49,9 +49,10 @@ import {
   type Character,
 } from "../../modules/characters/characters.api";
 import { useAuthStore } from "../../modules/auth/auth.store";
-import { getInventory } from "../../modules/inventory/inventory.api";
+import { getInventory, type InventoryItem as InvItem } from "../../modules/inventory/inventory.api";
 import SpellQuickPanel from "./SpellQuickPanel";
 import InitiativeWidget from "./InitiativeWidget";
+import TraumaSection from "./TraumaSection";
 import { useCharactersStore } from "../../modules/characters/characters.store";
 
 
@@ -108,6 +109,46 @@ const DEFAULT_ASI_LEVELS = [4, 8, 12, 16, 19];
 function getAsiOpportunities(nivel: number, className: string): number {
   const levels = ASI_LEVELS_BY_CLASS[className] ?? DEFAULT_ASI_LEVELS;
   return levels.filter((l) => l <= nivel).length;
+}
+
+function getMovementSpeed(raceName: string, subRaceName: string): number {
+  if (subRaceName === "Elfo da Floresta") return 10.5;
+  if (["Anão", "Gnomo", "Hobbit"].includes(raceName)) return 7.5;
+  return 9;
+}
+
+function mod(score: number): number {
+  return Math.floor((score - 10) / 2);
+}
+
+function calcCA(
+  attrs: Record<string, number>,
+  className: string,
+  raceName: string,
+  equippedItems: InvItem[],
+): number {
+  const dex = mod(attrs.destreza    ?? 10);
+  const con = mod(attrs.constituicao ?? 10);
+  const sab = mod(attrs.sabedoria   ?? 10);
+
+  const armor  = equippedItems.find((i) => i.armorType && ["light", "medium", "heavy"].includes(i.armorType));
+  const shield = equippedItems.some((i) => i.armorType === "shield" && i.isEquipped);
+
+  let base: number;
+  if (armor) {
+    base = armor.armorAc ?? 10;
+    if (armor.armorType === "light")  base += dex;
+    else if (armor.armorType === "medium") base += Math.min(dex, 2);
+    // heavy: sem modificador de DES
+  } else {
+    if (className === "Bárbaro")       base = 10 + dex + con;
+    else if (className === "Monge")    base = 10 + dex + sab;
+    else if (raceName === "Draconato") base = 13 + dex;
+    else                               base = 10 + dex;
+  }
+
+  if (shield) base += 2;
+  return base;
 }
 
 const RACE_ICON: Record<string, string> = {
@@ -327,6 +368,7 @@ export default function ViewCharacterPage() {
   const [draft,    setDraft]    = useState<Character | null>(null);
 
   const [invWeight,  setInvWeight]  = useState<{ total: number; capacity: number } | null>(null);
+  const [equippedItems, setEquippedItems] = useState<InvItem[]>([]);
 
   const [hpOpen,       setHpOpen]       = useState(false);
   const [hpAction,     setHpAction]     = useState<HpAction>("damage");
@@ -366,6 +408,7 @@ export default function ViewCharacterPage() {
         getInventory(id).then((inv) => {
           if (!alive) return;
           setInvWeight({ total: inv.totalWeight, capacity: inv.carryingCapacity });
+          setEquippedItems(inv.items.filter((i) => i.isEquipped));
         }).catch(() => {});
       } catch (e: any) {
         if (!alive) return;
@@ -819,6 +862,55 @@ export default function ViewCharacterPage() {
                     </Typography>
                   </Box>
 
+                  {/* CA badge */}
+                  {(() => {
+                    const attrs     = getAttrsFrom(draft);
+                    const className = (draft as any)?.dndClass?.name ?? "";
+                    const raceName  = (draft as any)?.race?.name     ?? "";
+                    const ca        = calcCA(attrs, className, raceName, equippedItems);
+                    const hasArmor  = equippedItems.some((i) => i.armorType && i.armorType !== "shield");
+                    const hasShield = equippedItems.some((i) => i.armorType === "shield");
+                    const tooltip   = hasArmor
+                      ? `CA ${ca} — com armadura${hasShield ? " + escudo" : ""}`
+                      : `CA ${ca} — sem armadura${hasShield ? " + escudo" : ""}`;
+                    return (
+                      <Tooltip title={tooltip} placement="left">
+                        <Box sx={{
+                          display: "inline-flex", alignItems: "center", gap: 0.5,
+                          px: 1, py: 0.35, borderRadius: "8px", cursor: "default",
+                          bgcolor: "rgba(80,140,255,0.1)", border: "1px solid rgba(80,140,255,0.22)",
+                        }}>
+                          <Typography sx={{ fontSize: 11, lineHeight: 1 }}>🛡️</Typography>
+                          <Typography sx={{ fontSize: 12, fontWeight: 900, color: "rgba(140,185,255,0.95)" }}>
+                            CA {ca}
+                          </Typography>
+                        </Box>
+                      </Tooltip>
+                    );
+                  })()}
+
+                  {/* Deslocamento badge */}
+                  {(() => {
+                    const raceName    = (draft as any)?.race?.name    ?? "";
+                    const subRaceName = (draft as any)?.subRace?.name ?? "";
+                    if (!raceName) return null;
+                    const speed = getMovementSpeed(raceName, subRaceName);
+                    return (
+                      <Tooltip title={`Deslocamento: ${speed} metros por turno`} placement="left">
+                        <Box sx={{
+                          display: "inline-flex", alignItems: "center", gap: 0.5,
+                          px: 1, py: 0.35, borderRadius: "8px", cursor: "default",
+                          bgcolor: "rgba(60,180,100,0.1)", border: "1px solid rgba(60,180,100,0.22)",
+                        }}>
+                          <Typography sx={{ fontSize: 11, lineHeight: 1 }}>🏃</Typography>
+                          <Typography sx={{ fontSize: 12, fontWeight: 900, color: "rgba(120,230,170,0.95)" }}>
+                            {speed}m
+                          </Typography>
+                        </Box>
+                      </Tooltip>
+                    );
+                  })()}
+
                   <Popover
                     open={Boolean(profAnchor)}
                     anchorEl={profAnchor}
@@ -1094,8 +1186,7 @@ export default function ViewCharacterPage() {
                     <Box>
                       {/* Section header */}
                       <Stack direction="row" alignItems="center" sx={{ mb: 1.5 }}>
-                        <SectionIconBox>⚡</SectionIconBox>
-                        <SectionLabelText>Atributos</SectionLabelText>
+                        <SectionLabel icon="⚡" label="Atributos" />
                         <SectionDivider />
                         {/* Master toggle */}
                         {isMaster && (
@@ -1246,6 +1337,9 @@ export default function ViewCharacterPage() {
                   );
                 })()}
 
+                {/* ── TRAUMAS ────────────────────────────────────── */}
+                {id && <TraumaSection characterId={id} />}
+
                 {/* ── SKILLS ─────────────────────────────────────── */}
                 <Box>
                   <SectionLabel icon="✨" label="Perícias" />
@@ -1259,7 +1353,48 @@ export default function ViewCharacterPage() {
                         <SkillRow key={sk?.id ?? i}>
                           <SkillIconBox>{getSkillIconByAttr(sk?.attribute)}</SkillIconBox>
                           <Box sx={{ flex: 1, minWidth: 0 }}>
-                            <Typography sx={{ fontWeight: 700, fontSize: 13.5, color: "rgba(255,255,255,0.88)", lineHeight: 1.2 }}>{sk?.name}</Typography>
+                            <Stack direction="row" alignItems="center" spacing={0.75} flexWrap="wrap">
+                              <Typography sx={{ fontWeight: 700, fontSize: 13.5, color: "rgba(255,255,255,0.88)", lineHeight: 1.2 }}>{sk?.name}</Typography>
+                              {sk?.source === 'class' && (
+                                <Box sx={{
+                                  px: 0.7, py: 0.15,
+                                  borderRadius: "5px",
+                                  bgcolor: "rgba(120,85,255,0.18)",
+                                  border: "1px solid rgba(140,100,255,0.35)",
+                                  lineHeight: 1,
+                                }}>
+                                  <Typography sx={{ fontSize: 9.5, fontWeight: 800, color: "rgba(190,165,255,0.9)", letterSpacing: "0.07em", textTransform: "uppercase" }}>
+                                    Classe
+                                  </Typography>
+                                </Box>
+                              )}
+                              {sk?.source === 'race' && (
+                                <Box sx={{
+                                  px: 0.7, py: 0.15,
+                                  borderRadius: "5px",
+                                  bgcolor: "rgba(60,180,130,0.15)",
+                                  border: "1px solid rgba(80,200,160,0.35)",
+                                  lineHeight: 1,
+                                }}>
+                                  <Typography sx={{ fontSize: 9.5, fontWeight: 800, color: "rgba(120,230,180,0.9)", letterSpacing: "0.07em", textTransform: "uppercase" }}>
+                                    Raça
+                                  </Typography>
+                                </Box>
+                              )}
+                              {sk?.source === 'background' && (
+                                <Box sx={{
+                                  px: 0.7, py: 0.15,
+                                  borderRadius: "5px",
+                                  bgcolor: "rgba(255,160,40,0.13)",
+                                  border: "1px solid rgba(255,180,60,0.35)",
+                                  lineHeight: 1,
+                                }}>
+                                  <Typography sx={{ fontSize: 9.5, fontWeight: 800, color: "rgba(255,210,120,0.9)", letterSpacing: "0.07em", textTransform: "uppercase" }}>
+                                    Antecedente
+                                  </Typography>
+                                </Box>
+                              )}
+                            </Stack>
                             {sk?.attribute && <Typography sx={{ fontSize: 11.5, color: "rgba(255,255,255,0.35)" }}>{sk.attribute}</Typography>}
                           </Box>
                         </SkillRow>

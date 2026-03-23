@@ -18,6 +18,8 @@ import AutoStoriesRoundedIcon from "@mui/icons-material/AutoStoriesRounded";
 import PeopleAltRoundedIcon from "@mui/icons-material/PeopleAltRounded";
 import LocalOfferRoundedIcon from "@mui/icons-material/LocalOfferRounded";
 import BugReportRoundedIcon from "@mui/icons-material/BugReportRounded";
+import AssignmentIndRoundedIcon from "@mui/icons-material/AssignmentIndRounded";
+import PsychologyRoundedIcon from "@mui/icons-material/PsychologyRounded";
 import { Glass, Noise, OrbSide, OrbTop, Page, PageLabel, PageTitle } from "./personagens/ViewCharacter.styles";
 import InitiativeManager from "./personagens/InitiativeManager";
 import RestManager from "./personagens/RestManager";
@@ -25,8 +27,11 @@ import MasterGrimoire from "./personagens/MasterGrimoire";
 import NpcGenerator from "./personagens/NpcGenerator";
 import PriceTable from "./personagens/PriceTable";
 import BugReportsPanel from "./personagens/BugReportsPanel";
+import MasterCharacterPanel from "./personagens/MasterCharacterPanel";
+import PsychologyMasterPanel from "./personagens/PsychologyMasterPanel";
+import CustomNpcPanel from "./personagens/CustomNpcPanel";
 
-type Section = "initiative" | "rest" | "grimoire" | "npc" | "prices" | "bugs";
+type Section = "initiative" | "rest" | "grimoire" | "npc" | "prices" | "bugs" | "characters" | "psychology";
 
 const MENU_ITEMS: { id: Section; label: string; icon: React.ReactNode }[] = [
   {
@@ -55,19 +60,66 @@ const MENU_ITEMS: { id: Section; label: string; icon: React.ReactNode }[] = [
     icon: <LocalOfferRoundedIcon sx={{ fontSize: 18 }} />,
   },
   {
+    id: "characters",
+    label: "Fichas dos Jogadores",
+    icon: <AssignmentIndRoundedIcon sx={{ fontSize: 18 }} />,
+  },
+  {
+    id: "psychology",
+    label: "Psicologia",
+    icon: <PsychologyRoundedIcon sx={{ fontSize: 18 }} />,
+  },
+  {
     id: "bugs",
     label: "Bug Reports",
     icon: <BugReportRoundedIcon sx={{ fontSize: 18 }} />,
   },
 ];
 
+function NpcSection() {
+  const [tab, setTab] = useState<"generator" | "roster">("generator");
+  return (
+    <Box>
+      <Stack direction="row" spacing={0.75} sx={{ mb: 2 }}>
+        {[
+          { id: "generator" as const, label: "🎲 Gerador" },
+          { id: "roster" as const, label: "📋 Cadastrados" },
+        ].map(({ id, label }) => {
+          const active = tab === id;
+          return (
+            <Box
+              key={id}
+              component="button"
+              onClick={() => setTab(id)}
+              sx={{
+                px: 1.75, py: 0.6, border: "1px solid", borderRadius: "9px",
+                fontSize: 12.5, fontWeight: active ? 800 : 600, cursor: "pointer",
+                bgcolor: active ? "rgba(120,85,255,0.15)" : "rgba(255,255,255,0.04)",
+                color: active ? "rgba(190,165,255,0.95)" : "rgba(255,255,255,0.45)",
+                borderColor: active ? "rgba(120,85,255,0.4)" : "rgba(255,255,255,0.09)",
+                transition: "all .12s",
+                "&:hover:not(:disabled)": { bgcolor: active ? "rgba(120,85,255,0.22)" : "rgba(255,255,255,0.08)" },
+              }}
+            >
+              {label}
+            </Box>
+          );
+        })}
+      </Stack>
+      {tab === "generator" ? <NpcGenerator /> : <CustomNpcPanel />}
+    </Box>
+  );
+}
+
 function SectionContent({ section }: { section: Section }) {
-  if (section === "initiative") return <InitiativeManager isMaster />;
-  if (section === "rest")       return <RestManager />;
-  if (section === "grimoire")   return <MasterGrimoire />;
-  if (section === "npc")        return <NpcGenerator />;
-  if (section === "prices")     return <PriceTable isMaster />;
-  if (section === "bugs")       return <BugReportsPanel />;
+  if (section === "initiative")  return <InitiativeManager isMaster />;
+  if (section === "rest")        return <RestManager />;
+  if (section === "grimoire")    return <MasterGrimoire />;
+  if (section === "npc")         return <NpcSection />;
+  if (section === "prices")      return <PriceTable isMaster />;
+  if (section === "bugs")        return <BugReportsPanel />;
+  if (section === "characters")  return <MasterCharacterPanel />;
+  if (section === "psychology")  return <PsychologyMasterPanel />;
   return null;
 }
 

@@ -14,6 +14,7 @@ import DeleteRoundedIcon from "@mui/icons-material/DeleteRounded";
 import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 import PendingRoundedIcon from "@mui/icons-material/PendingRounded";
 import HourglassTopRoundedIcon from "@mui/icons-material/HourglassTopRounded";
+import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
 import type { BugReport } from "../../modules/bug-reports/bug-reports.api";
 import {
   deleteBugReport,
@@ -43,6 +44,10 @@ function BugCard({ report, onUpdated, onDeleted }: {
   const [expanded, setExpanded] = useState(false);
   const [resolution, setResolution] = useState(report.resolution ?? "");
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setResolution(report.resolution ?? "");
+  }, [report.resolution]);
 
   async function setStatus(status: string) {
     setSaving(true);
@@ -215,12 +220,20 @@ const STATUS_FILTERS = [
 export default function BugReportsPanel() {
   const [reports, setReports] = useState<BugReport[]>([]);
   const [loading, setLoading]  = useState(true);
+  const [error,   setError]    = useState<string | null>(null);
   const [filter,  setFilter]   = useState<string>("open");
 
-  useEffect(() => {
+  function loadReports() {
+    setLoading(true);
+    setError(null);
     getBugReports()
       .then(setReports)
+      .catch(() => setError("Erro ao carregar bug reports. Verifique se você está autenticado como mestre."))
       .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    loadReports();
   }, []);
 
   function handleUpdated(updated: BugReport) {
@@ -248,10 +261,30 @@ export default function BugReportsPanel() {
     );
   }
 
+  if (error) {
+    return (
+      <Box sx={{ textAlign: "center", py: 4 }}>
+        <Typography sx={{ fontSize: 13, color: "#ef4444", mb: 1.5 }}>{error}</Typography>
+        <Box
+          component="button"
+          onClick={loadReports}
+          sx={{
+            px: 2, py: 0.7, border: "1px solid rgba(239,68,68,0.3)", borderRadius: "8px",
+            bgcolor: "rgba(239,68,68,0.08)", color: "#ef4444",
+            fontSize: 12, fontWeight: 700, cursor: "pointer",
+            "&:hover": { bgcolor: "rgba(239,68,68,0.15)" },
+          }}
+        >
+          Tentar novamente
+        </Box>
+      </Box>
+    );
+  }
+
   return (
     <Box>
-      {/* Filter chips */}
-      <Stack direction="row" flexWrap="wrap" gap={0.6} sx={{ mb: 1.5 }}>
+      {/* Filter chips + refresh */}
+      <Stack direction="row" flexWrap="wrap" gap={0.6} sx={{ mb: 1.5 }} alignItems="center">
         {STATUS_FILTERS.map(({ id, label }) => {
           const active = filter === id;
           const count = counts[id as keyof typeof counts];
@@ -273,6 +306,11 @@ export default function BugReportsPanel() {
             />
           );
         })}
+        <Tooltip title="Atualizar">
+          <IconButton size="small" onClick={loadReports} sx={{ color: "rgba(255,255,255,0.3)", ml: "auto", "&:hover": { color: "rgba(255,255,255,0.7)" } }}>
+            <RefreshRoundedIcon sx={{ fontSize: 16 }} />
+          </IconButton>
+        </Tooltip>
       </Stack>
 
       {visible.length === 0 ? (

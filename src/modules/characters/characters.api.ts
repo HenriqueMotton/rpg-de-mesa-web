@@ -1,5 +1,11 @@
 import { http } from "../../shared/http/http";
 
+export type CharacterNote = {
+  id: string;
+  text: string;
+  createdAt: string;
+};
+
 export type CharacterListItem = {
   id: number | string;
   name: string;
@@ -43,6 +49,10 @@ export type CreateCharacterPayload = {
     carisma: number;
   };
   selectedSkills: number[];
+  classSkillIds?: number[];
+  raceSkillIds?: number[];
+  raceCantripName?: string;
+  backgroundId?: number;
   pp?: number;
   money: number;
   pc?: number;
@@ -58,8 +68,13 @@ export async function listCharacters() {
   return data;
 }
 
-export async function listAllCharacters(): Promise<{ id: number; name: string; dndClass?: { name: string; icon: string } }[]> {
+export async function listAllCharacters(): Promise<{ id: number; name: string; nivel?: number; health?: number; maxHealth?: number; race?: { name: string } | null; subRace?: { name: string } | null; dndClass?: { name: string; icon: string } | null; idUser?: { name: string } | null }[]> {
   const { data } = await http.get("/characters/master/all");
+  return data;
+}
+
+export async function getMasterCharacter(id: number | string): Promise<any> {
+  const { data } = await http.get(`/characters/master/${id}`);
   return data;
 }
 
@@ -151,6 +166,10 @@ export async function uploadCharacterAvatar(id: number | string, file: File): Pr
     headers: { "Content-Type": "multipart/form-data" },
   });
   return data;
+}
+
+export async function saveNotes(characterId: number | string, notes: CharacterNote[]): Promise<void> {
+  await http.put(`/characters/${characterId}`, { notes });
 }
 
 export async function listSkills() {

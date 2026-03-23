@@ -27,6 +27,11 @@ export type ClassProficiencies = {
   savingThrows: string[];
 };
 
+export type ClassSkillOptions = {
+  skills: string[];
+  count: number;
+};
+
 export type DndClass = {
   id: number;
   name: string;
@@ -38,6 +43,7 @@ export type DndClass = {
   features: ClassFeature[];
   classSpells: ClassSpellEntry[];
   proficiencies?: ClassProficiencies;
+  skillOptions?: ClassSkillOptions;
 };
 
 export async function listClasses(): Promise<DndClass[]> {

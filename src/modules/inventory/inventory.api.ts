@@ -1,5 +1,7 @@
 import { http } from "../../shared/http/http";
 
+export type ArmorType = "light" | "medium" | "heavy" | "shield";
+
 export type InventoryItem = {
   id: number;
   name: string;
@@ -7,6 +9,9 @@ export type InventoryItem = {
   weight: number;
   category: string | null;
   description: string | null;
+  armorType: ArmorType | null;
+  armorAc: number | null;
+  isEquipped: boolean;
 };
 
 export type InventoryResponse = {
@@ -21,10 +26,18 @@ export type InventoryItemPayload = {
   weight: number;
   category?: string;
   description?: string;
+  armorType?: ArmorType | null;
+  armorAc?: number | null;
+  isEquipped?: boolean;
 };
 
 export async function getInventory(characterId: number | string): Promise<InventoryResponse> {
   const { data } = await http.get<InventoryResponse>(`/inventory/character/${characterId}`);
+  return data;
+}
+
+export async function getMasterInventory(characterId: number | string): Promise<InventoryResponse> {
+  const { data } = await http.get<InventoryResponse>(`/inventory/master/character/${characterId}`);
   return data;
 }
 

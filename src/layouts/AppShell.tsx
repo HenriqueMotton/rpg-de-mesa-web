@@ -30,6 +30,7 @@ import SettingsRoundedIcon from "@mui/icons-material/SettingsRounded";
 import PersonRoundedIcon from "@mui/icons-material/PersonRounded";
 import SchoolRoundedIcon from "@mui/icons-material/SchoolRounded";
 import LocalFireDepartmentRoundedIcon from "@mui/icons-material/LocalFireDepartmentRounded";
+import StickyNote2RoundedIcon from "@mui/icons-material/StickyNote2Rounded";
 
 import ChatWidget from "../modules/chat/ChatWidget";
 import { ROUTES } from "../app/routes";
@@ -45,6 +46,7 @@ const NAV_H = 62;
 const NAV_INVENTARIO = "/inventario";
 const NAV_CLASSE     = "/classe";
 const NAV_GRIMORIO   = "/grimorio";
+const NAV_NOTAS      = "/notas";
 
 export default function AppShell() {
   const location  = useLocation();
@@ -140,6 +142,7 @@ export default function AppShell() {
         </Badge>
       ),
     }] : []),
+    { label: "Notas", value: NAV_NOTAS, icon: <StickyNote2RoundedIcon /> },
     ...(isMaster ? [{ label: "Config",   value: ROUTES.config, icon: <SettingsRoundedIcon /> }] : []),
   ];
 
@@ -147,6 +150,7 @@ export default function AppShell() {
     if (path.includes("/inventario")) return NAV_INVENTARIO;
     if (path.includes("/classe"))     return NAV_CLASSE;
     if (path.includes("/grimorio"))   return NAV_GRIMORIO;
+    if (path.includes("/notas"))      return NAV_NOTAS;
     for (const item of NAV_ITEMS) {
       if (item.value && path.startsWith(item.value)) return item.value;
     }
@@ -160,6 +164,8 @@ export default function AppShell() {
       if (charId) navigate(`/personagens/${charId}/classe`);
     } else if (value === NAV_GRIMORIO) {
       if (charId) navigate(`/personagens/${charId}/grimorio`);
+    } else if (value === NAV_NOTAS) {
+      if (charId) navigate(`/personagens/${charId}/notas`);
     } else {
       navigate(value);
     }

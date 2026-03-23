@@ -40,6 +40,8 @@ import { useCharactersStore } from "../../modules/characters/characters.store";
 import { listRaces, type Race } from "../../modules/races/races.api";
 import { listClasses, type DndClass } from "../../modules/classes/classes.api";
 import { listKits, type Kit } from "../../modules/kits/kits.api";
+import { listBackgrounds, type Background } from "../../modules/backgrounds/backgrounds.api";
+import { getDndSpells, type DndSpellData } from "../../modules/spells/spells.api";
 import { addEquipment } from "../../modules/equipment/equipment.api";
 import { Glass, Page, OrbTop, OrbSide, Noise } from "./CreateCharacter.styles";
 import AppDialog, { AppDialogCancelButton, AppDialogConfirmButton } from "../../components/ui/AppDialog";
@@ -257,17 +259,21 @@ export default function CreateCharacterPage() {
   const setDraftHealth          = useCharactersStore((s) => s.setDraftHealth);
   const setDraftMaxHealth       = useCharactersStore((s) => s.setDraftMaxHealth);
   const toggleDraftSkill        = useCharactersStore((s) => s.toggleDraftSkill);
+  const toggleDraftRaceSkill    = useCharactersStore((s) => s.toggleDraftRaceSkill);
   const setDraftRaceId          = useCharactersStore((s) => s.setDraftRaceId);
   const setDraftSubRaceId       = useCharactersStore((s) => s.setDraftSubRaceId);
   const setDraftClass           = useCharactersStore((s) => s.setDraftClass);
+  const setDraftBackground      = useCharactersStore((s) => s.setDraftBackground);
+  const setDraftRaceCantripName = useCharactersStore((s) => s.setDraftRaceCantripName);
 
-  const { name, attributes, pointsRemaining, pp, money, pc, health, maxHealth, selectedSkills, selectedRaceId, selectedSubRaceId, selectedClassId } = draft;
+  const { name, attributes, pointsRemaining, pp, money, pc, health, maxHealth, selectedSkills, raceSkillChoiceIds, raceCantripName, selectedRaceId, selectedSubRaceId, selectedClassId, selectedBackgroundId } = draft;
 
-  const [step,       setStep]       = useState<1 | 2 | 3 | 4>(1);
-  const [saving,     setSaving]     = useState(false);
-  const [error,      setError]      = useState<string | null>(null);
-  const [skillsOpen, setSkillsOpen] = useState(false);
-  const [moneyOpen,  setMoneyOpen]  = useState(false);
+  const [step,           setStep]           = useState<1 | 2 | 3 | 4 | 5>(1);
+  const [saving,         setSaving]         = useState(false);
+  const [error,          setError]          = useState<string | null>(null);
+  const [skillsOpen,     setSkillsOpen]     = useState(false);
+  const [raceSkillsOpen, setRaceSkillsOpen] = useState(false);
+  const [moneyOpen,      setMoneyOpen]      = useState(false);
   const [healthOpen, setHealthOpen] = useState(false);
   const [tempRoll,   setTempRoll]   = useState("");
 
@@ -278,6 +284,9 @@ export default function CreateCharacterPage() {
   const [classes,           setClasses]           = useState<DndClass[]>([]);
   const [classesLoading,    setClassesLoading]    = useState(false);
   const [kits,              setKits]              = useState<Kit[]>([]);
+  const [backgrounds,       setBackgrounds]       = useState<Background[]>([]);
+  const [bgLoading,         setBgLoading]         = useState(false);
+  const [wizardCantrips,    setWizardCantrips]    = useState<DndSpellData[]>([]);
   const [detailClass,       setDetailClass]       = useState<DndClass | null>(null);
   const [imgError,          setImgError]          = useState<Record<string, boolean>>({});
   const [pendingEquipment,  setPendingEquipment]  = useState<string[]>([]);
@@ -301,6 +310,21 @@ export default function CreateCharacterPage() {
   }, []);
 
   useEffect(() => {
+    setBgLoading(true);
+    listBackgrounds().then(setBackgrounds).catch(() => {}).finally(() => setBgLoading(false));
+  }, []);
+
+  useEffect(() => {
+    const subRace = races.flatMap((r) => r.subRaces ?? []).find((sr) => sr.id === selectedSubRaceId);
+    if (subRace?.cantripChoice) {
+      getDndSpells({ class: subRace.cantripChoice.from, maxLevel: 0 }).then(setWizardCantrips).catch(() => {});
+    } else {
+      setWizardCantrips([]);
+    }
+    setDraftRaceCantripName(null);
+  }, [selectedSubRaceId]);
+
+  useEffect(() => {
     if (detailClass) {
       const m = new Map<string, string | null>();
       detailClass.equipment.forEach((eq) => {
@@ -312,10 +336,15 @@ export default function CreateCharacterPage() {
     }
   }, [detailClass]);
 
-  const selectedRace  = races.find((r) => r.id === selectedRaceId) ?? null;
-  const selectedClass = classes.find((c) => c.id === selectedClassId) ?? null;
-  const hitDie        = HIT_DICE_BY_CLASS[selectedClass?.name ?? ""] ?? 8;
-  const goldDice      = GOLD_DICE_BY_CLASS[selectedClass?.name ?? ""] ?? { dice: 4, sides: 4, multiplier: 10 };
+  const selectedRace       = races.find((r) => r.id === selectedRaceId) ?? null;
+  const selectedClass      = classes.find((c) => c.id === selectedClassId) ?? null;
+  const hitDie             = HIT_DICE_BY_CLASS[selectedClass?.name ?? ""] ?? 8;
+  const goldDice           = GOLD_DICE_BY_CLASS[selectedClass?.name ?? ""] ?? { dice: 4, sides: 4, multiplier: 10 };
+  const classSkillCount    = selectedClass?.skillOptions?.count ?? 2;
+  const classAllowedSkills = selectedClass?.skillOptions?.skills ?? [];
+  const raceFixedSkills    = selectedRace?.skillGrants?.fixed ?? [];
+  const raceChooseCount    = selectedRace?.skillGrants?.choose?.count ?? 0;
+  const raceChooseFrom     = selectedRace?.skillGrants?.choose?.from ?? [];
 
   useEffect(() => {
     if (selectedRace) {
@@ -346,12 +375,21 @@ export default function CreateCharacterPage() {
   const effectiveHp     = health + conMod;
 
   const canNext = useMemo(
-    () => name.trim().length > 0 && selectedSkills.length >= 5,
-    [name, selectedSkills.length]
+    () => name.trim().length > 0 && selectedSkills.length >= classSkillCount && raceSkillChoiceIds.length >= raceChooseCount,
+    [name, selectedSkills.length, classSkillCount, raceSkillChoiceIds.length, raceChooseCount]
   );
   const raceHasSubRaces = (selectedRace?.subRaces?.length ?? 0) > 0;
-  const canGoStep3 = selectedRaceId !== null && (!raceHasSubRaces || selectedSubRaceId !== null);
-  const canSave    = canGoStep3 && selectedClassId !== null && pointsRemaining === 0 && !saving;
+  const selectedSubRaceObj = selectedRace?.subRaces?.find((sr) => sr.id === selectedSubRaceId) ?? null;
+  const cantripChoiceRequired = (selectedSubRaceObj?.cantripChoice?.count ?? 0) > 0;
+
+  const movementSpeed = (() => {
+    if (selectedSubRaceObj?.name === "Elfo da Floresta") return 10.5;
+    if (["Anão", "Gnomo", "Hobbit"].includes(selectedRace?.name ?? "")) return 7.5;
+    return 9;
+  })();
+  const canGoStep3 = selectedRaceId !== null && (!raceHasSubRaces || selectedSubRaceId !== null) && (!cantripChoiceRequired || raceCantripName !== null);
+  const selectedBackground = backgrounds.find((b) => b.id === selectedBackgroundId) ?? null;
+  const canSave    = canGoStep3 && selectedClassId !== null && selectedBackgroundId !== null && pointsRemaining === 0 && !saving;
 
   function openRaceDetail(race: Race) {
     setTempSubRaceId(selectedRaceId === race.id ? selectedSubRaceId : null);
@@ -413,22 +451,29 @@ export default function CreateCharacterPage() {
 
   function handleNext() {
     setError(null);
-    if (!name.trim())              return setError("O nome do personagem é obrigatório.");
-    if (selectedSkills.length < 5) return setError("Selecione pelo menos 5 perícias.");
-    setStep(4);
+    if (!name.trim())                              return setError("O nome do personagem é obrigatório.");
+    if (selectedSkills.length < classSkillCount)   return setError(`Selecione pelo menos ${classSkillCount} perícias da classe.`);
+    if (raceSkillChoiceIds.length < raceChooseCount) return setError(`Selecione ${raceChooseCount} perícias da sua raça.`);
+    setStep(5);
   }
 
   async function handleSave() {
     if (!selectedRaceId)        return setError("Selecione uma raça para continuar.");
     if (!selectedClassId)       return setError("Selecione uma classe para continuar.");
+    if (!selectedBackgroundId)  return setError("Selecione um antecedente para continuar.");
     if (pointsRemaining > 0)    return setError("Você ainda tem pontos para distribuir.");
     setError(null);
     setSaving(true);
     try {
+      const skillsToSend = selectedSkills.slice(0, classSkillCount);
       const char = await createCharacter({
         name,
         attributes,
-        selectedSkills: selectedSkills.slice(0, 5),
+        selectedSkills: skillsToSend,
+        classSkillIds: skillsToSend,
+        raceSkillIds: raceSkillChoiceIds.length > 0 ? raceSkillChoiceIds : undefined,
+        raceCantripName: raceCantripName ?? undefined,
+        backgroundId: selectedBackgroundId ?? undefined,
         pp,
         money,
         pc,
@@ -494,7 +539,7 @@ export default function CreateCharacterPage() {
         <Glass elevation={0}>
           <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
 
-            <StepIndicator current={step} total={4} />
+            <StepIndicator current={step} total={5} />
 
             {error && (
               <Alert severity="error" sx={{ mb: 2, borderRadius: "10px", py: 0.5, bgcolor: "rgba(220,60,60,0.09)", border: "1px solid rgba(220,60,60,0.18)", color: "rgba(255,150,150,0.9)", fontSize: 13, "& .MuiAlert-icon": { color: "rgba(255,110,110,0.7)", fontSize: 18 } }}>
@@ -563,10 +608,120 @@ export default function CreateCharacterPage() {
                         );
                       })}
                     </Box>
+
+                    {/* Deslocamento */}
+                    <Box sx={{ mt: 1.25, display: "flex", alignItems: "center", gap: 1.25, px: 1.25, py: 0.9, borderRadius: "10px", border: "1px solid rgba(80,200,120,0.2)", bgcolor: "rgba(60,180,100,0.06)" }}>
+                      <Typography sx={{ fontSize: 16, lineHeight: 1 }}>🏃</Typography>
+                      <Box>
+                        <Typography sx={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(100,220,150,0.5)", lineHeight: 1, mb: 0.2 }}>
+                          Deslocamento
+                        </Typography>
+                        <Typography sx={{ fontSize: 13.5, fontWeight: 900, color: "rgba(120,230,170,0.9)", lineHeight: 1 }}>
+                          {movementSpeed} m/turno
+                        </Typography>
+                      </Box>
+                    </Box>
                   </Box>
                 )}
 
-                <Button onClick={() => { if (!canGoStep3) return setError("Selecione uma raça para continuar."); setError(null); setStep(2); }} variant="contained" disabled={!canGoStep3}
+                {/* ── Magias fixas da sub-raça (ex: Drow, Gnomo da Floresta) ── */}
+                {(selectedSubRaceObj?.spellGrants?.length ?? 0) > 0 && (
+                  <Box sx={{
+                    px: 1.75, py: 1.5, borderRadius: "14px",
+                    border: "1px solid rgba(180,100,255,0.22)",
+                    bgcolor: "rgba(140,60,255,0.05)",
+                  }}>
+                    <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+                      <Typography sx={{ fontSize: 15, lineHeight: 1 }}>🔮</Typography>
+                      <Typography sx={{ fontWeight: 800, fontSize: 13.5, color: "rgba(210,170,255,0.9)" }}>
+                        Magias Raciais — {selectedSubRaceObj?.name}
+                      </Typography>
+                    </Stack>
+                    <Typography sx={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", mb: 0.75 }}>
+                      Concedidas automaticamente
+                    </Typography>
+                    <Stack direction="row" flexWrap="wrap" gap={0.75}>
+                      {selectedSubRaceObj?.spellGrants?.map((sp) => (
+                        <Box key={sp.name} sx={{
+                          px: 1, py: 0.4, borderRadius: "8px",
+                          bgcolor: "rgba(140,60,255,0.15)",
+                          border: "1px solid rgba(180,100,255,0.3)",
+                        }}>
+                          <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: "rgba(210,170,255,0.9)" }}>
+                            {sp.name}{(sp.minCharLevel ?? 1) > 1 ? ` (nv ${sp.minCharLevel})` : ""}
+                          </Typography>
+                        </Box>
+                      ))}
+                    </Stack>
+                  </Box>
+                )}
+
+                {/* ── Cantrip racial à escolha (ex: Alto Elfo) ── */}
+                {cantripChoiceRequired && wizardCantrips.length > 0 && (
+                  <Box sx={{
+                    px: 1.75, py: 1.5, borderRadius: "14px",
+                    border: "1px solid rgba(130,200,255,0.22)",
+                    bgcolor: "rgba(80,160,255,0.05)",
+                  }}>
+                    <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+                      <Typography sx={{ fontSize: 15, lineHeight: 1 }}>✨</Typography>
+                      <Typography sx={{ fontWeight: 800, fontSize: 13.5, color: "rgba(160,210,255,0.9)" }}>
+                        Truque — {selectedSubRaceObj?.name}
+                      </Typography>
+                    </Stack>
+                    <Typography sx={{ fontSize: 12, color: "rgba(255,255,255,0.35)", mb: 1.25, lineHeight: 1.5 }}>
+                      Escolha {selectedSubRaceObj?.cantripChoice?.count} truque da lista de magias do {selectedSubRaceObj?.cantripChoice?.from}.
+                    </Typography>
+                    <Stack spacing={0.6}>
+                      {wizardCantrips.map((sp) => {
+                        const sel = raceCantripName === sp.name;
+                        return (
+                          <Box
+                            key={sp.name}
+                            onClick={() => setDraftRaceCantripName(sel ? null : sp.name)}
+                            sx={{
+                              display: "flex", alignItems: "center", gap: 1.25,
+                              px: 1.25, py: 0.9, borderRadius: "10px", cursor: "pointer",
+                              border: `1px solid ${sel ? "rgba(130,200,255,0.5)" : "rgba(255,255,255,0.07)"}`,
+                              bgcolor: sel ? "rgba(80,160,255,0.12)" : "rgba(255,255,255,0.02)",
+                              transition: "all 0.15s",
+                              "&:hover": {
+                                border: `1px solid ${sel ? "rgba(130,200,255,0.65)" : "rgba(130,200,255,0.25)"}`,
+                                bgcolor: sel ? "rgba(80,160,255,0.17)" : "rgba(80,160,255,0.06)",
+                              },
+                            }}
+                          >
+                            <Box sx={{
+                              width: 18, height: 18, borderRadius: "50%", flexShrink: 0,
+                              border: `1.5px solid ${sel ? "rgba(130,200,255,0.9)" : "rgba(255,255,255,0.2)"}`,
+                              bgcolor: sel ? "rgba(80,160,255,0.85)" : "transparent",
+                              display: "grid", placeItems: "center", transition: "all 0.15s",
+                            }}>
+                              {sel && <Box sx={{ width: 7, height: 7, borderRadius: "50%", bgcolor: "#fff" }} />}
+                            </Box>
+                            <Box sx={{ flex: 1, minWidth: 0 }}>
+                              <Typography sx={{ fontSize: 13, fontWeight: 700, color: sel ? "rgba(180,225,255,0.95)" : "rgba(255,255,255,0.75)", lineHeight: 1.2 }}>
+                                {sp.name}
+                              </Typography>
+                              {sp.school && (
+                                <Typography sx={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>
+                                  {sp.school} · {sp.castingTime} · {sp.range}
+                                </Typography>
+                              )}
+                            </Box>
+                          </Box>
+                        );
+                      })}
+                    </Stack>
+                  </Box>
+                )}
+
+                <Button onClick={() => {
+                  if (!selectedRaceId) return setError("Selecione uma raça para continuar.");
+                  if (raceHasSubRaces && !selectedSubRaceId) return setError("Selecione uma sub-raça para continuar.");
+                  if (cantripChoiceRequired && !raceCantripName) return setError("Escolha um truque racial para continuar.");
+                  setError(null); setStep(2);
+                }} variant="contained" disabled={!canGoStep3}
                   sx={{ py: 1.35, borderRadius: "10px", textTransform: "none", fontWeight: 700, fontSize: 14.5, background: "linear-gradient(135deg, #7B54FF 0%, #5B8FFF 100%)", boxShadow: "0 6px 24px rgba(100,70,230,0.35)", "&:hover": { boxShadow: "0 10px 32px rgba(100,70,230,0.5)", transform: "translateY(-1px)" }, "&:active": { transform: "translateY(0)" }, "&.Mui-disabled": { background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.2)" } }}>
                   Próximo
                 </Button>
@@ -663,8 +818,111 @@ export default function CreateCharacterPage() {
               </Stack>
             )}
 
-            {/* ══ STEP 3 — Nome, Ouro e Perícias ══ */}
+            {/* ══ STEP 3 — Antecedente ══ */}
             {step === 3 && (
+              <Stack spacing={2.5}>
+                <Box>
+                  <Typography sx={{ fontWeight: 800, fontSize: 15.5, color: "rgba(255,255,255,0.92)", mb: 0.5 }}>
+                    Escolha seu antecedente
+                  </Typography>
+                  <Typography sx={{ fontSize: 13, color: "rgba(255,255,255,0.38)", lineHeight: 1.5 }}>
+                    Seu antecedente define sua história e concede perícias adicionais.
+                  </Typography>
+                </Box>
+
+                {bgLoading ? (
+                  <Box sx={{ display: "grid", placeItems: "center", py: 6 }}>
+                    <CircularProgress size={28} thickness={2.5} sx={{ color: "rgba(140,90,255,0.7)" }} />
+                  </Box>
+                ) : (
+                  <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1.1 }}>
+                    {backgrounds.map((bg) => {
+                      const selected = selectedBackgroundId === bg.id;
+                      return (
+                        <Box
+                          key={bg.id}
+                          onClick={() => { setDraftBackground(bg.id); setError(null); }}
+                          sx={{
+                            borderRadius: "15px",
+                            border: `1.5px solid ${selected ? "rgba(255,180,60,0.55)" : "rgba(255,255,255,0.07)"}`,
+                            bgcolor: selected ? "rgba(255,160,40,0.1)" : "rgba(255,255,255,0.025)",
+                            p: 1.4,
+                            cursor: "pointer",
+                            transition: "all 0.18s",
+                            position: "relative",
+                            boxShadow: selected ? "0 0 18px rgba(255,160,40,0.18)" : "none",
+                            "&:hover": {
+                              border: `1.5px solid ${selected ? "rgba(255,180,60,0.7)" : "rgba(255,180,60,0.25)"}`,
+                              bgcolor: selected ? "rgba(255,160,40,0.14)" : "rgba(255,160,40,0.05)",
+                            },
+                          }}
+                        >
+                          {selected && (
+                            <Box sx={{
+                              position: "absolute", top: 8, right: 8,
+                              width: 18, height: 18, borderRadius: "50%",
+                              bgcolor: "rgba(255,160,40,0.9)",
+                              display: "grid", placeItems: "center",
+                            }}>
+                              <CheckRoundedIcon sx={{ fontSize: 11, color: "#fff" }} />
+                            </Box>
+                          )}
+
+                          <Typography sx={{ fontSize: 20, lineHeight: 1, mb: 0.65 }}>{bg.icon}</Typography>
+
+                          <Typography sx={{ fontWeight: 800, fontSize: 13, color: "rgba(255,255,255,0.92)", lineHeight: 1.2, mb: 0.4 }}>
+                            {bg.name}
+                          </Typography>
+
+                          <Stack direction="row" flexWrap="wrap" gap={0.5} sx={{ mt: 0.5 }}>
+                            {bg.skillGrants.map((sk) => (
+                              <Box key={sk} sx={{
+                                px: 0.75, py: 0.2,
+                                borderRadius: "5px",
+                                bgcolor: "rgba(255,160,40,0.13)",
+                                border: "1px solid rgba(255,180,60,0.28)",
+                                fontSize: 10, fontWeight: 700,
+                                color: "rgba(255,210,120,0.9)",
+                              }}>
+                                {sk}
+                              </Box>
+                            ))}
+                          </Stack>
+                        </Box>
+                      );
+                    })}
+                  </Box>
+                )}
+
+                {selectedBackground?.feature && (
+                  <Box sx={{ borderRadius: "14px", border: "1px solid rgba(255,180,60,0.2)", bgcolor: "rgba(255,160,40,0.05)", p: 1.75 }}>
+                    <Typography sx={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,200,100,0.6)", mb: 0.4 }}>
+                      Característica — {selectedBackground.feature.name}
+                    </Typography>
+                    <Typography sx={{ fontSize: 12.5, color: "rgba(255,255,255,0.45)", lineHeight: 1.6 }}>
+                      {selectedBackground.feature.description}
+                    </Typography>
+                  </Box>
+                )}
+
+                <Button
+                  onClick={() => { if (!selectedBackgroundId) return setError("Selecione um antecedente para continuar."); setError(null); setStep(4); }}
+                  variant="contained"
+                  disabled={!selectedBackgroundId}
+                  sx={{ py: 1.35, borderRadius: "10px", textTransform: "none", fontWeight: 700, fontSize: 14.5, background: "linear-gradient(135deg, #7B54FF 0%, #5B8FFF 100%)", boxShadow: "0 6px 24px rgba(100,70,230,0.35)", "&:hover": { boxShadow: "0 10px 32px rgba(100,70,230,0.5)", transform: "translateY(-1px)" }, "&:active": { transform: "translateY(0)" }, "&.Mui-disabled": { background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.2)" } }}>
+                  Próximo
+                </Button>
+
+                <Button onClick={() => { setStep(2); setError(null); }}
+                  startIcon={<ArrowBackRoundedIcon sx={{ fontSize: "16px !important" }} />}
+                  sx={{ textTransform: "none", fontWeight: 600, fontSize: 13.5, color: "rgba(255,255,255,0.32)", borderRadius: "10px", "&:hover": { color: "rgba(255,255,255,0.6)", bgcolor: "rgba(255,255,255,0.04)" } }}>
+                  Voltar
+                </Button>
+              </Stack>
+            )}
+
+            {/* ══ STEP 4 — Nome, Ouro e Perícias ══ */}
+            {step === 4 && (
               <Stack spacing={2}>
 
                 {/* Nome */}
@@ -740,10 +998,10 @@ export default function CreateCharacterPage() {
                   onClick={() => setSkillsOpen(true)}
                   sx={{
                     px: 1.75, py: 1.5, borderRadius: "14px", cursor: "pointer",
-                    border: selectedSkills.length >= 5
+                    border: selectedSkills.length >= classSkillCount
                       ? "1px solid rgba(120,85,255,0.35)"
                       : "1.5px dashed rgba(255,255,255,0.14)",
-                    bgcolor: selectedSkills.length >= 5
+                    bgcolor: selectedSkills.length >= classSkillCount
                       ? "rgba(120,85,255,0.08)"
                       : "rgba(255,255,255,0.02)",
                     transition: "all .2s",
@@ -755,40 +1013,154 @@ export default function CreateCharacterPage() {
                 >
                   <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 0.75 }}>
                     <Stack direction="row" alignItems="center" spacing={1}>
-                      <AutoAwesomeRoundedIcon sx={{ fontSize: 15, color: selectedSkills.length >= 5 ? "rgba(180,150,255,0.85)" : "rgba(255,255,255,0.35)" }} />
-                      <Typography sx={{ fontWeight: 800, fontSize: 13.5, color: selectedSkills.length >= 5 ? "rgba(220,200,255,0.95)" : "rgba(255,255,255,0.75)" }}>
-                        Perícias
+                      <AutoAwesomeRoundedIcon sx={{ fontSize: 15, color: selectedSkills.length >= classSkillCount ? "rgba(180,150,255,0.85)" : "rgba(255,255,255,0.35)" }} />
+                      <Typography sx={{ fontWeight: 800, fontSize: 13.5, color: selectedSkills.length >= classSkillCount ? "rgba(220,200,255,0.95)" : "rgba(255,255,255,0.75)" }}>
+                        Perícias da Classe
                       </Typography>
                     </Stack>
                     <Box sx={{
                       px: 1, py: 0.25, borderRadius: "8px",
-                      bgcolor: selectedSkills.length >= 5 ? "rgba(120,85,255,0.2)" : "rgba(255,255,255,0.06)",
-                      border: `1px solid ${selectedSkills.length >= 5 ? "rgba(120,85,255,0.4)" : "rgba(255,255,255,0.1)"}`,
+                      bgcolor: selectedSkills.length >= classSkillCount ? "rgba(120,85,255,0.2)" : "rgba(255,255,255,0.06)",
+                      border: `1px solid ${selectedSkills.length >= classSkillCount ? "rgba(120,85,255,0.4)" : "rgba(255,255,255,0.1)"}`,
                     }}>
-                      <Typography sx={{ fontSize: 12, fontWeight: 800, color: selectedSkills.length >= 5 ? "rgba(200,175,255,0.95)" : "rgba(255,255,255,0.4)" }}>
-                        {selectedSkills.length} / 5
+                      <Typography sx={{ fontSize: 12, fontWeight: 800, color: selectedSkills.length >= classSkillCount ? "rgba(200,175,255,0.95)" : "rgba(255,255,255,0.4)" }}>
+                        {selectedSkills.length} / {classSkillCount}
                       </Typography>
                     </Box>
                   </Stack>
 
-                  <Typography sx={{ fontSize: 12.5, color: selectedSkills.length >= 5 ? "rgba(180,155,255,0.6)" : "rgba(255,255,255,0.32)", mb: 1.1 }}>
+                  <Typography sx={{ fontSize: 12.5, color: selectedSkills.length >= classSkillCount ? "rgba(180,155,255,0.6)" : "rgba(255,255,255,0.32)", mb: 1.1 }}>
                     {selectedSkills.length === 0
-                      ? "Toque aqui para escolher as 5 perícias do seu personagem"
-                      : selectedSkills.length < 5
-                      ? `Escolha mais ${5 - selectedSkills.length} perícia${5 - selectedSkills.length > 1 ? "s" : ""}`
+                      ? `Toque aqui para escolher ${classSkillCount} perícia${classSkillCount > 1 ? "s" : ""} da sua classe`
+                      : selectedSkills.length < classSkillCount
+                      ? `Escolha mais ${classSkillCount - selectedSkills.length} perícia${classSkillCount - selectedSkills.length > 1 ? "s" : ""}`
                       : "Perícias selecionadas ✓"}
                   </Typography>
 
                   <Box sx={{ height: 3, borderRadius: 99, bgcolor: "rgba(255,255,255,0.07)", overflow: "hidden" }}>
                     <Box sx={{
                       height: "100%", borderRadius: 99,
-                      width: `${(selectedSkills.length / 5) * 100}%`,
+                      width: `${(selectedSkills.length / classSkillCount) * 100}%`,
                       background: "linear-gradient(90deg, #7c4dff, #b47eff)",
                       transition: "width .35s cubic-bezier(.4,0,.2,1)",
                       boxShadow: selectedSkills.length > 0 ? "0 0 8px rgba(140,80,255,0.45)" : "none",
                     }} />
                   </Box>
                 </Box>
+
+                {/* ── PERÍCIAS DA RAÇA ────────────────────────────── */}
+                {(raceFixedSkills.length > 0 || raceChooseCount > 0) && (
+                  <Box sx={{
+                    px: 1.75, py: 1.5, borderRadius: "14px",
+                    border: "1px solid rgba(80,200,160,0.25)",
+                    bgcolor: "rgba(60,180,130,0.06)",
+                  }}>
+                    <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+                      <Typography sx={{ fontSize: 15, lineHeight: 1 }}>🌿</Typography>
+                      <Typography sx={{ fontWeight: 800, fontSize: 13.5, color: "rgba(120,230,180,0.9)" }}>
+                        Perícias da Raça
+                      </Typography>
+                      <Typography sx={{ fontSize: 11.5, color: "rgba(120,230,180,0.5)" }}>
+                        · {selectedRace?.name}
+                      </Typography>
+                    </Stack>
+
+                    {/* Fixas */}
+                    {raceFixedSkills.length > 0 && (
+                      <Box sx={{ mb: raceChooseCount > 0 ? 1.25 : 0 }}>
+                        <Typography sx={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", mb: 0.75 }}>
+                          Concedidas automaticamente
+                        </Typography>
+                        <Stack direction="row" flexWrap="wrap" gap={0.75}>
+                          {raceFixedSkills.map((sk) => (
+                            <Box key={sk} sx={{
+                              px: 1, py: 0.4,
+                              borderRadius: "8px",
+                              bgcolor: "rgba(60,180,130,0.15)",
+                              border: "1px solid rgba(80,200,160,0.3)",
+                              display: "flex", alignItems: "center", gap: 0.5,
+                            }}>
+                              <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: "rgba(120,230,180,0.9)" }}>
+                                {sk}
+                              </Typography>
+                            </Box>
+                          ))}
+                        </Stack>
+                      </Box>
+                    )}
+
+                    {/* À escolha (ex: Meio-Elfo) */}
+                    {raceChooseCount > 0 && (
+                      <Box
+                        onClick={() => setRaceSkillsOpen(true)}
+                        sx={{
+                          px: 1.25, py: 1, borderRadius: "10px", cursor: "pointer",
+                          border: raceSkillChoiceIds.length >= raceChooseCount
+                            ? "1px solid rgba(80,200,160,0.4)"
+                            : "1.5px dashed rgba(80,200,160,0.25)",
+                          bgcolor: raceSkillChoiceIds.length >= raceChooseCount
+                            ? "rgba(60,180,130,0.1)"
+                            : "rgba(255,255,255,0.02)",
+                          transition: "all .2s",
+                          "&:hover": { borderColor: "rgba(80,200,160,0.6)", bgcolor: "rgba(60,180,130,0.12)" },
+                        }}
+                      >
+                        <Stack direction="row" alignItems="center" justifyContent="space-between">
+                          <Typography sx={{ fontSize: 12.5, color: raceSkillChoiceIds.length >= raceChooseCount ? "rgba(120,230,180,0.85)" : "rgba(255,255,255,0.45)" }}>
+                            {raceSkillChoiceIds.length >= raceChooseCount
+                              ? `${raceChooseCount} perícia${raceChooseCount > 1 ? "s" : ""} escolhida${raceChooseCount > 1 ? "s" : ""} ✓`
+                              : `Escolha ${raceChooseCount} perícia${raceChooseCount > 1 ? "s" : ""} (qualquer)`}
+                          </Typography>
+                          <Box sx={{
+                            px: 0.85, py: 0.2, borderRadius: "7px",
+                            bgcolor: raceSkillChoiceIds.length >= raceChooseCount ? "rgba(60,180,130,0.2)" : "rgba(255,255,255,0.06)",
+                            border: `1px solid ${raceSkillChoiceIds.length >= raceChooseCount ? "rgba(80,200,160,0.4)" : "rgba(255,255,255,0.1)"}`,
+                          }}>
+                            <Typography sx={{ fontSize: 11.5, fontWeight: 800, color: raceSkillChoiceIds.length >= raceChooseCount ? "rgba(120,230,180,0.9)" : "rgba(255,255,255,0.35)" }}>
+                              {raceSkillChoiceIds.length} / {raceChooseCount}
+                            </Typography>
+                          </Box>
+                        </Stack>
+                      </Box>
+                    )}
+                  </Box>
+                )}
+
+                {/* ── PERÍCIAS DO ANTECEDENTE ─────────────────── */}
+                {selectedBackground && selectedBackground.skillGrants.length > 0 && (
+                  <Box sx={{
+                    px: 1.75, py: 1.5, borderRadius: "14px",
+                    border: "1px solid rgba(255,180,60,0.22)",
+                    bgcolor: "rgba(255,160,40,0.05)",
+                  }}>
+                    <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+                      <Typography sx={{ fontSize: 15, lineHeight: 1 }}>{selectedBackground.icon}</Typography>
+                      <Typography sx={{ fontWeight: 800, fontSize: 13.5, color: "rgba(255,210,120,0.9)" }}>
+                        Perícias do Antecedente
+                      </Typography>
+                      <Typography sx={{ fontSize: 11.5, color: "rgba(255,210,120,0.5)" }}>
+                        · {selectedBackground.name}
+                      </Typography>
+                    </Stack>
+                    <Typography sx={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", mb: 0.75 }}>
+                      Concedidas automaticamente
+                    </Typography>
+                    <Stack direction="row" flexWrap="wrap" gap={0.75}>
+                      {selectedBackground.skillGrants.map((sk) => (
+                        <Box key={sk} sx={{
+                          px: 1, py: 0.4,
+                          borderRadius: "8px",
+                          bgcolor: "rgba(255,160,40,0.13)",
+                          border: "1px solid rgba(255,180,60,0.3)",
+                        }}>
+                          <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: "rgba(255,210,120,0.9)" }}>
+                            {sk}
+                          </Typography>
+                        </Box>
+                      ))}
+                    </Stack>
+                  </Box>
+                )}
 
                 {/* ── Altura ─────────────────────────────────────── */}
                 {(() => {
@@ -838,7 +1210,7 @@ export default function CreateCharacterPage() {
                   Próximo
                 </Button>
 
-                <Button onClick={() => { setStep(2); setError(null); }}
+                <Button onClick={() => { setStep(3); setError(null); }}
                   startIcon={<ArrowBackRoundedIcon sx={{ fontSize: "16px !important" }} />}
                   sx={{ textTransform: "none", fontWeight: 600, fontSize: 13.5, color: "rgba(255,255,255,0.32)", borderRadius: "10px", "&:hover": { color: "rgba(255,255,255,0.6)", bgcolor: "rgba(255,255,255,0.04)" } }}>
                   Voltar
@@ -846,8 +1218,8 @@ export default function CreateCharacterPage() {
               </Stack>
             )}
 
-            {/* ══ STEP 4 — Atributos e Vida ══ */}
-            {step === 4 && (
+            {/* ══ STEP 5 — Atributos e Vida ══ */}
+            {step === 5 && (
               <Stack spacing={2.5}>
                 <Box>
                   <Typography sx={{ fontWeight: 800, fontSize: 15.5, color: "rgba(255,255,255,0.92)", mb: 0.5 }}>
@@ -982,7 +1354,7 @@ export default function CreateCharacterPage() {
                   {saving ? <CircularProgress size={18} sx={{ color: "rgba(255,255,255,0.5)" }} /> : "Criar Personagem"}
                 </Button>
 
-                <Button onClick={() => { setStep(3); setError(null); }}
+                <Button onClick={() => { setStep(4); setError(null); }}
                   startIcon={<ArrowBackRoundedIcon sx={{ fontSize: "16px !important" }} />}
                   sx={{ textTransform: "none", fontWeight: 600, fontSize: 13.5, color: "rgba(255,255,255,0.32)", borderRadius: "10px", "&:hover": { color: "rgba(255,255,255,0.6)", bgcolor: "rgba(255,255,255,0.04)" } }}>
                   Voltar
@@ -1468,7 +1840,22 @@ export default function CreateCharacterPage() {
         </Popover>
 
         {/* Dialogs */}
-        <SkillsDialog open={skillsOpen} onClose={() => setSkillsOpen(false)} selected={selectedSkills} toggle={toggleDraftSkill} max={5} />
+        <SkillsDialog
+          open={skillsOpen}
+          onClose={() => setSkillsOpen(false)}
+          selected={selectedSkills}
+          toggle={toggleDraftSkill}
+          max={classSkillCount}
+          allowedSkillNames={classAllowedSkills.length > 0 ? classAllowedSkills : undefined}
+        />
+        <SkillsDialog
+          open={raceSkillsOpen}
+          onClose={() => setRaceSkillsOpen(false)}
+          selected={raceSkillChoiceIds}
+          toggle={toggleDraftRaceSkill}
+          max={raceChooseCount}
+          allowedSkillNames={raceChooseFrom.length > 0 ? raceChooseFrom : undefined}
+        />
         {/* Money Roll Dialog */}
         <AppDialog
           open={moneyOpen}

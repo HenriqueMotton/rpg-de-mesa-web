@@ -13,6 +13,7 @@ import ViewCharacterPage from "../pages/personagens/ViewCharacterPage";
 import InventoryPage from "../pages/personagens/InventoryPage";
 import GrimorioPage from "../pages/personagens/GrimorioPage";
 import ClassePage from "../pages/personagens/ClassePage";
+import NotasPage from "../pages/personagens/NotasPage";
 import ConfigPage from "../pages/ConfigPage";
 import EnemiesPage from "../pages/mestre/EnemiesPage";
 
@@ -26,6 +27,7 @@ export const ROUTES = {
   inventario: "/personagens/:id/inventario",
   grimorio: "/personagens/:id/grimorio",
   classe: "/personagens/:id/classe",
+  notas: "/personagens/:id/notas",
 
   config: "/config",
   inimigos: "/mestre/inimigos",
@@ -67,6 +69,7 @@ export const routes: RouteObject[] = [
           { path: ":id/inventario", element: <InventoryPage /> },
           { path: ":id/grimorio", element: <GrimorioPage /> },
           { path: ":id/classe", element: <ClassePage /> },
+          { path: ":id/notas", element: <NotasPage /> },
         ],
       },
 

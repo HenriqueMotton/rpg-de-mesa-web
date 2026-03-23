@@ -21,9 +21,12 @@ type CharacterDraft = {
   maxHealth: number;
 
   selectedSkills: number[];
+  raceSkillChoiceIds: number[];
+  raceCantripName: string | null;
   selectedRaceId: number | null;
   selectedSubRaceId: number | null;
   selectedClassId: number | null;
+  selectedBackgroundId: number | null;
 };
 
 const DEFAULT_DRAFT: CharacterDraft = {
@@ -45,9 +48,12 @@ const DEFAULT_DRAFT: CharacterDraft = {
   maxHealth: 8,
 
   selectedSkills: [],
+  raceSkillChoiceIds: [],
+  raceCantripName: null,
   selectedRaceId: null,
   selectedSubRaceId: null,
   selectedClassId: null,
+  selectedBackgroundId: null,
 };
 
 type CharactersStore = {
@@ -78,9 +84,14 @@ type CharactersStore = {
   toggleDraftSkill: (skill: number) => void;
   setDraftSkills: (skills: number[]) => void;
 
+  toggleDraftRaceSkill: (id: number) => void;
+  setDraftRaceSkillChoices: (ids: number[]) => void;
+
   setDraftRaceId: (id: number | null) => void;
   setDraftSubRaceId: (id: number | null) => void;
   setDraftClass: (id: number | null) => void;
+  setDraftBackground: (id: number | null) => void;
+  setDraftRaceCantripName: (name: string | null) => void;
 };
 
 export const useCharactersStore = create<CharactersStore>((set) => ({
@@ -128,12 +139,30 @@ export const useCharactersStore = create<CharactersStore>((set) => ({
   setDraftSkills: (selectedSkills) =>
     set((s) => ({ draft: { ...s.draft, selectedSkills } })),
 
+  toggleDraftRaceSkill: (id) =>
+    set((s) => {
+      const has = s.draft.raceSkillChoiceIds.includes(id);
+      const raceSkillChoiceIds = has
+        ? s.draft.raceSkillChoiceIds.filter((x) => x !== id)
+        : [...s.draft.raceSkillChoiceIds, id];
+      return { draft: { ...s.draft, raceSkillChoiceIds } };
+    }),
+
+  setDraftRaceSkillChoices: (raceSkillChoiceIds) =>
+    set((s) => ({ draft: { ...s.draft, raceSkillChoiceIds } })),
+
   setDraftRaceId: (selectedRaceId) =>
-    set((s) => ({ draft: { ...s.draft, selectedRaceId } })),
+    set((s) => ({ draft: { ...s.draft, selectedRaceId, raceSkillChoiceIds: [], raceCantripName: null } })),
 
   setDraftSubRaceId: (selectedSubRaceId) =>
     set((s) => ({ draft: { ...s.draft, selectedSubRaceId } })),
 
   setDraftClass: (selectedClassId) =>
     set((s) => ({ draft: { ...s.draft, selectedClassId } })),
+
+  setDraftBackground: (selectedBackgroundId) =>
+    set((s) => ({ draft: { ...s.draft, selectedBackgroundId } })),
+
+  setDraftRaceCantripName: (raceCantripName) =>
+    set((s) => ({ draft: { ...s.draft, raceCantripName } })),
 }));

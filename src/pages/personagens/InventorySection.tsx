@@ -18,6 +18,7 @@ import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import Inventory2RoundedIcon from "@mui/icons-material/Inventory2Rounded";
+import ShieldRoundedIcon from "@mui/icons-material/ShieldRounded";
 
 import AppDialog, {
   AppDialogConfirmButton,
@@ -35,11 +36,20 @@ import {
   updateInventoryItem,
   deleteInventoryItem,
   type InventoryItem,
+  type ArmorType,
 } from "../../modules/inventory/inventory.api";
+
+const ARMOR_TYPES: { value: ArmorType; label: string; hint: string }[] = [
+  { value: "light",  label: "Leve",   hint: "CA base + DEX mod (completo)" },
+  { value: "medium", label: "Média",  hint: "CA base + DEX mod (máx +2)" },
+  { value: "heavy",  label: "Pesada", hint: "CA base (sem DEX)" },
+  { value: "shield", label: "Escudo", hint: "+2 CA (adicional)" },
+];
 
 const CATEGORIES = [
   { value: "Arma", icon: "⚔️" },
   { value: "Armadura", icon: "🛡️" },
+  { value: "Escudo", icon: "🔰" },
   { value: "Poção", icon: "🧪" },
   { value: "Ferramenta", icon: "🔧" },
   { value: "Equipamento", icon: "🎒" },
@@ -95,6 +105,9 @@ const EMPTY_FORM = {
   weight: "0",
   category: "Outros",
   description: "",
+  armorType: "" as ArmorType | "",
+  armorAc: "10",
+  isEquipped: false,
 };
 
 const inputSx = {
@@ -207,6 +220,9 @@ export default function InventorySection({ characterId }: Props) {
       weight: String(item.weight),
       category: item.category ?? "Outros",
       description: item.description ?? "",
+      armorType: (item.armorType ?? "") as ArmorType | "",
+      armorAc: String(item.armorAc ?? 10),
+      isEquipped: item.isEquipped ?? false,
     });
     setFormError(null);
     setEditItem(item);
@@ -225,6 +241,16 @@ export default function InventorySection({ characterId }: Props) {
     return true;
   }
 
+  function buildArmorPayload() {
+    const isArmorCat = form.category === "Armadura" || form.category === "Escudo";
+    if (!isArmorCat || !form.armorType) return {};
+    return {
+      armorType: form.armorType as ArmorType,
+      armorAc: form.armorType === "shield" ? 2 : Number(form.armorAc),
+      isEquipped: form.isEquipped,
+    };
+  }
+
   async function handleAdd() {
     if (!validateForm()) return;
     setSaving(true);
@@ -236,6 +262,7 @@ export default function InventorySection({ characterId }: Props) {
         weight: Number(form.weight),
         category: form.category,
         description: form.description.trim() || undefined,
+        ...buildArmorPayload(),
       });
       setAddOpen(false);
       await load();
@@ -257,6 +284,9 @@ export default function InventorySection({ characterId }: Props) {
         weight: Number(form.weight),
         category: form.category,
         description: form.description.trim() || undefined,
+        armorType: form.armorType || null,
+        armorAc: form.armorType ? (form.armorType === "shield" ? 2 : Number(form.armorAc)) : null,
+        isEquipped: form.isEquipped,
       });
       setEditItem(null);
       await load();
@@ -264,6 +294,15 @@ export default function InventorySection({ characterId }: Props) {
       setFormError("Não foi possível salvar as alterações.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function toggleEquip(item: InventoryItem) {
+    try {
+      await updateInventoryItem(item.id, { isEquipped: !item.isEquipped });
+      await load();
+    } catch {
+      setError("Não foi possível atualizar o item.");
     }
   }
 
@@ -439,6 +478,81 @@ export default function InventorySection({ characterId }: Props) {
           rows={2}
           sx={inputSx}
         />
+
+        {/* Campos de armadura — visíveis apenas para categorias Armadura e Escudo */}
+        {(form.category === "Armadura" || form.category === "Escudo") && (
+          <Box sx={{ p: 1.5, borderRadius: "12px", border: "1px solid rgba(80,160,255,0.2)", bgcolor: "rgba(60,120,255,0.05)" }}>
+            <Typography sx={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(120,180,255,0.6)", mb: 1.25 }}>
+              🛡️ Configuração de CA
+            </Typography>
+
+            <Box sx={{ mb: 1.25 }}>
+              <Typography sx={{ fontSize: 12, color: "rgba(255,255,255,0.35)", mb: 0.75, ml: 0.25 }}>
+                Tipo de armadura
+              </Typography>
+              <Select
+                value={form.armorType}
+                onChange={(e) => setForm((f) => ({ ...f, armorType: e.target.value as ArmorType | "" }))}
+                displayEmpty
+                fullWidth
+                sx={selectSx}
+                MenuProps={{ PaperProps: { sx: menuPaperSx } }}
+              >
+                <MenuItem value=""><em style={{ opacity: 0.4 }}>Não definido</em></MenuItem>
+                {ARMOR_TYPES.map((t) => (
+                  <MenuItem key={t.value} value={t.value}>
+                    {t.label}
+                    <Typography component="span" sx={{ ml: 1, fontSize: 11, opacity: 0.45 }}>— {t.hint}</Typography>
+                  </MenuItem>
+                ))}
+              </Select>
+            </Box>
+
+            {form.armorType && form.armorType !== "shield" && (
+              <TextField
+                label="CA base da armadura"
+                value={form.armorAc}
+                onChange={(e) => setForm((f) => ({ ...f, armorAc: e.target.value }))}
+                type="number"
+                inputProps={{ min: 1, max: 25, step: 1 }}
+                fullWidth
+                helperText="Ex: Couro=11, Cota de Malha=16, Placas=18"
+                FormHelperTextProps={{ sx: { color: "rgba(255,255,255,0.25)", fontSize: 11 } }}
+                sx={{ ...inputSx, mb: 1.25 }}
+              />
+            )}
+
+            <Box
+              onClick={() => setForm((f) => ({ ...f, isEquipped: !f.isEquipped }))}
+              sx={{
+                display: "flex", alignItems: "center", gap: 1.25,
+                px: 1.25, py: 1, borderRadius: "10px", cursor: "pointer",
+                border: `1px solid ${form.isEquipped ? "rgba(80,200,120,0.35)" : "rgba(255,255,255,0.08)"}`,
+                bgcolor: form.isEquipped ? "rgba(60,180,100,0.08)" : "rgba(255,255,255,0.02)",
+                transition: "all .15s",
+              }}
+            >
+              <ShieldRoundedIcon sx={{ fontSize: 18, color: form.isEquipped ? "rgba(100,220,150,0.9)" : "rgba(255,255,255,0.25)" }} />
+              <Box sx={{ flex: 1 }}>
+                <Typography sx={{ fontSize: 13, fontWeight: 700, color: form.isEquipped ? "rgba(140,230,180,0.9)" : "rgba(255,255,255,0.5)" }}>
+                  {form.isEquipped ? "Equipado" : "Não equipado"}
+                </Typography>
+                <Typography sx={{ fontSize: 11, color: "rgba(255,255,255,0.25)" }}>
+                  Apenas itens equipados contam para o cálculo de CA
+                </Typography>
+              </Box>
+              <Box sx={{
+                width: 20, height: 20, borderRadius: "6px",
+                border: `2px solid ${form.isEquipped ? "rgba(80,200,120,0.7)" : "rgba(255,255,255,0.2)"}`,
+                bgcolor: form.isEquipped ? "rgba(80,200,120,0.8)" : "transparent",
+                display: "grid", placeItems: "center",
+                transition: "all .15s",
+              }}>
+                {form.isEquipped && <Typography sx={{ fontSize: 11, color: "#fff", fontWeight: 900, lineHeight: 1 }}>✓</Typography>}
+              </Box>
+            </Box>
+          </Box>
+        )}
       </Stack>
     </AppDialog>
   );
@@ -574,8 +688,8 @@ export default function InventorySection({ characterId }: Props) {
                       borderRadius: "10px",
                       display: "grid",
                       placeItems: "center",
-                      bgcolor: "rgba(120,85,255,0.1)",
-                      border: "1px solid rgba(120,85,255,0.18)",
+                      bgcolor: item.isEquipped ? "rgba(60,180,100,0.15)" : "rgba(120,85,255,0.1)",
+                      border: `1px solid ${item.isEquipped ? "rgba(80,200,120,0.3)" : "rgba(120,85,255,0.18)"}`,
                       fontSize: 16,
                       flexShrink: 0,
                     }}
@@ -584,21 +698,32 @@ export default function InventorySection({ characterId }: Props) {
                   </Box>
 
                   <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography
-                      sx={{
-                        fontWeight: 700,
-                        fontSize: 13.5,
-                        color: "rgba(255,255,255,0.88)",
-                        lineHeight: 1.2,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {item.name}
-                    </Typography>
+                    <Stack direction="row" alignItems="center" gap={0.75}>
+                      <Typography
+                        sx={{
+                          fontWeight: 700,
+                          fontSize: 13.5,
+                          color: "rgba(255,255,255,0.88)",
+                          lineHeight: 1.2,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {item.name}
+                      </Typography>
+                      {item.isEquipped && (
+                        <Box sx={{ px: 0.7, py: 0.15, borderRadius: "6px", bgcolor: "rgba(60,180,100,0.15)", border: "1px solid rgba(80,200,120,0.3)", flexShrink: 0 }}>
+                          <Typography sx={{ fontSize: 9.5, fontWeight: 800, color: "rgba(100,220,150,0.9)", letterSpacing: "0.05em" }}>
+                            EQUIPADO
+                          </Typography>
+                        </Box>
+                      )}
+                    </Stack>
                     <Typography sx={{ fontSize: 11.5, color: "rgba(255,255,255,0.35)" }}>
-                      {item.category ?? "Outros"}{item.weight > 0 ? ` · ${item.weight} kg` : ""}
+                      {item.category ?? "Outros"}
+                      {item.armorType && item.armorAc != null ? ` · CA ${item.armorType === "shield" ? "+2" : item.armorAc}` : ""}
+                      {item.weight > 0 ? ` · ${item.weight} kg` : ""}
                     </Typography>
                   </Box>
 
@@ -646,6 +771,22 @@ export default function InventorySection({ characterId }: Props) {
                       </Stack>
                     );
                   })()}
+
+                  {/* Equip toggle — visível apenas para armaduras e escudos com armorType definido */}
+                  {item.armorType && (
+                    <Tooltip title={item.isEquipped ? "Desequipar" : "Equipar"} placement="top">
+                      <IconButton
+                        size="small"
+                        onClick={() => toggleEquip(item)}
+                        sx={{
+                          color: item.isEquipped ? "rgba(100,220,150,0.8)" : "rgba(255,255,255,0.22)",
+                          "&:hover": { color: "rgba(100,220,150,0.95)", bgcolor: "rgba(60,180,100,0.12)" },
+                        }}
+                      >
+                        <ShieldRoundedIcon sx={{ fontSize: 15 }} />
+                      </IconButton>
+                    </Tooltip>
+                  )}
 
                   <Tooltip title="Editar" placement="top">
                     <IconButton
