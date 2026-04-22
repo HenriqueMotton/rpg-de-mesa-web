@@ -708,6 +708,19 @@ export default function CreateCharacterPage() {
                                   {sp.school} · {sp.castingTime} · {sp.range}
                                 </Typography>
                               )}
+                              {sp.description && (
+                                <Typography sx={{
+                                  fontSize: 11, color: "rgba(255,255,255,0.45)", mt: 0.3, lineHeight: 1.5,
+                                  ...(sel ? {} : {
+                                    display: "-webkit-box",
+                                    WebkitLineClamp: 2,
+                                    WebkitBoxOrient: "vertical",
+                                    overflow: "hidden",
+                                  }),
+                                }}>
+                                  {sp.description}
+                                </Typography>
+                              )}
                             </Box>
                           </Box>
                         );
@@ -2016,6 +2029,7 @@ export default function CreateCharacterPage() {
               ? "0 4px 24px rgba(0,0,0,0.55), 0 0 12px rgba(120,85,255,0.18)"
               : "0 4px 24px rgba(0,0,0,0.55), 0 0 12px rgba(60,200,130,0.18)",
             backdropFilter: "blur(16px)",
+            WebkitBackdropFilter: "blur(16px)",
             transition: "border-color .3s, box-shadow .3s",
           }}>
             <PsychologyRoundedIcon sx={{

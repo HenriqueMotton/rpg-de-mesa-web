@@ -14,6 +14,7 @@ import {
 } from "./ViewCharacter.styles";
 import InventorySection from "./InventorySection";
 import EquipmentSection from "./EquipmentSection";
+
 export default function InventoryPage() {
   const { id } = useParams();
   const navigate = useNavigate();

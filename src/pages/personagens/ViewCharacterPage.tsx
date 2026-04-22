@@ -894,17 +894,36 @@ export default function ViewCharacterPage() {
                     const raceName    = (draft as any)?.race?.name    ?? "";
                     const subRaceName = (draft as any)?.subRace?.name ?? "";
                     if (!raceName) return null;
-                    const speed = getMovementSpeed(raceName, subRaceName);
+                    const baseSpeed = getMovementSpeed(raceName, subRaceName);
+                    const pct = invWeight && invWeight.capacity > 0 ? invWeight.total / invWeight.capacity : 0;
+                    const penalty = pct > 2 / 3 ? 6 : pct > 1 / 3 ? 3 : 0;
+                    const effectiveSpeed = Math.max(0, baseSpeed - penalty);
+                    const reduced = penalty > 0;
+                    const tooltipText = reduced
+                      ? `Deslocamento: ${baseSpeed}m base − ${penalty}m (encumbrance) = ${effectiveSpeed}m`
+                      : `Deslocamento: ${baseSpeed} metros por turno`;
+                    const chipColor = pct > 1
+                      ? { bg: "rgba(220,50,50,0.12)", border: "rgba(220,50,50,0.3)", text: "rgba(255,130,130,0.95)" }
+                      : pct > 2 / 3
+                      ? { bg: "rgba(230,120,30,0.12)", border: "rgba(230,120,30,0.3)", text: "rgba(255,185,110,0.95)" }
+                      : pct > 1 / 3
+                      ? { bg: "rgba(240,170,30,0.12)", border: "rgba(240,170,30,0.28)", text: "rgba(255,215,100,0.95)" }
+                      : { bg: "rgba(60,180,100,0.1)",  border: "rgba(60,180,100,0.22)",  text: "rgba(120,230,170,0.95)" };
                     return (
-                      <Tooltip title={`Deslocamento: ${speed} metros por turno`} placement="left">
+                      <Tooltip title={tooltipText} placement="left">
                         <Box sx={{
                           display: "inline-flex", alignItems: "center", gap: 0.5,
                           px: 1, py: 0.35, borderRadius: "8px", cursor: "default",
-                          bgcolor: "rgba(60,180,100,0.1)", border: "1px solid rgba(60,180,100,0.22)",
+                          bgcolor: chipColor.bg, border: `1px solid ${chipColor.border}`,
                         }}>
                           <Typography sx={{ fontSize: 11, lineHeight: 1 }}>🏃</Typography>
-                          <Typography sx={{ fontSize: 12, fontWeight: 900, color: "rgba(120,230,170,0.95)" }}>
-                            {speed}m
+                          {reduced && (
+                            <Typography sx={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.3)", textDecoration: "line-through", lineHeight: 1 }}>
+                              {baseSpeed}m
+                            </Typography>
+                          )}
+                          <Typography sx={{ fontSize: 12, fontWeight: 900, color: chipColor.text }}>
+                            {effectiveSpeed}m
                           </Typography>
                         </Box>
                       </Tooltip>
@@ -1143,12 +1162,12 @@ export default function ViewCharacterPage() {
                 {invWeight && (() => {
                   const pct = invWeight.capacity > 0 ? invWeight.total / invWeight.capacity : 0;
                   const clr = pct > 1
-                    ? { fill: "linear-gradient(90deg,#aa2020,#e03535)", glow: "rgba(220,50,50,0.35)", border: "rgba(220,50,50,0.22)", track: "rgba(220,50,50,0.07)", label: "Sobrecarregado", text: "rgba(255,130,130,0.9)" }
-                    : pct > 0.75
-                    ? { fill: "linear-gradient(90deg,#c05800,#e87820)", glow: "rgba(230,120,30,0.35)", border: "rgba(230,120,30,0.22)", track: "rgba(230,120,30,0.07)", label: "Pesado",          text: "rgba(255,185,110,0.9)" }
-                    : pct > 0.5
-                    ? { fill: "linear-gradient(90deg,#c88000,#f0aa20)", glow: "rgba(240,170,30,0.35)", border: "rgba(240,170,30,0.2)",  track: "rgba(240,170,30,0.07)", label: "Moderado",        text: "rgba(255,215,100,0.95)" }
-                    : { fill: "linear-gradient(90deg,#1fa863,#2ecc8a)", glow: "rgba(46,204,130,0.35)", border: "rgba(46,204,130,0.2)",  track: "rgba(46,204,130,0.07)", label: "Tranquilo",       text: "rgba(100,240,170,0.95)" };
+                    ? { fill: "linear-gradient(90deg,#aa2020,#e03535)", glow: "rgba(220,50,50,0.35)",  border: "rgba(220,50,50,0.22)",  track: "rgba(220,50,50,0.07)",  label: "Capacidade excedida",      text: "rgba(255,130,130,0.9)",   penalty: "Não pode se mover · Desvantagem em FOR, DEX e CON" }
+                    : pct > 2 / 3
+                    ? { fill: "linear-gradient(90deg,#c05800,#e87820)", glow: "rgba(230,120,30,0.35)", border: "rgba(230,120,30,0.22)", track: "rgba(230,120,30,0.07)", label: "Muito sobrecarregado",     text: "rgba(255,185,110,0.9)",   penalty: "Velocidade −6 m · Desvantagem em FOR, DEX e CON" }
+                    : pct > 1 / 3
+                    ? { fill: "linear-gradient(90deg,#c88000,#f0aa20)", glow: "rgba(240,170,30,0.35)", border: "rgba(240,170,30,0.2)",  track: "rgba(240,170,30,0.07)", label: "Sobrecarregado",           text: "rgba(255,215,100,0.95)",  penalty: "Velocidade −3 m" }
+                    : { fill: "linear-gradient(90deg,#1fa863,#2ecc8a)", glow: "rgba(46,204,130,0.35)", border: "rgba(46,204,130,0.2)",  track: "rgba(46,204,130,0.07)", label: "Normal",                   text: "rgba(100,240,170,0.95)",  penalty: null };
                   return (
                     <Box>
                       <SectionLabel icon="🎒" label="Carga" />
@@ -1168,6 +1187,14 @@ export default function ViewCharacterPage() {
                           </Box>
                         </Box>
                       </Box>
+                      {clr.penalty && (
+                        <Box sx={{ mt: 0.75, px: 1.5, py: 0.7, borderRadius: "10px", bgcolor: clr.track, border: `1px solid ${clr.border}`, display: "flex", alignItems: "center", gap: 0.75 }}>
+                          <Typography sx={{ fontSize: 13, lineHeight: 1 }}>⚠️</Typography>
+                          <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: clr.text }}>
+                            {clr.penalty}
+                          </Typography>
+                        </Box>
+                      )}
                     </Box>
                   );
                 })()}

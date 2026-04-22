@@ -37,6 +37,7 @@ import {
   deleteInventoryItem,
   type InventoryItem,
   type ArmorType,
+  type ItemProperties,
 } from "../../modules/inventory/inventory.api";
 
 const ARMOR_TYPES: { value: ArmorType; label: string; hint: string }[] = [
@@ -61,41 +62,51 @@ function getCategoryIcon(category: string | null) {
   return CATEGORIES.find((c) => c.value === category)?.icon ?? "📦";
 }
 
+const DAMAGE_TYPES = [
+  "Cortante", "Perfurante", "Contundente", "Ácido", "Frio", "Fogo",
+  "Força", "Relâmpago", "Necrótico", "Venenoso", "Psíquico", "Radiante", "Trovão",
+];
+
 function weightBarConfig(pct: number) {
+  // Thresholds D&D 5e: Sobrecarregado >STR×2,3kg (1/3 cap), Muito sobrecarregado >STR×4,5kg (2/3 cap)
   if (pct > 1)
     return {
       fill: "linear-gradient(90deg,#aa2020,#e03535)",
       glow: "rgba(220,50,50,0.4)",
       border: "rgba(220,50,50,0.25)",
       track: "rgba(220,50,50,0.08)",
-      label: "Sobrecarregado",
+      label: "Capacidade excedida",
       color: "rgba(255,130,130,0.9)",
+      penalty: "Não pode se mover · Desvantagem em FOR, DEX e CON",
     };
-  if (pct > 0.75)
+  if (pct > 2 / 3)
     return {
       fill: "linear-gradient(90deg,#c05800,#e87820)",
       glow: "rgba(230,120,30,0.4)",
       border: "rgba(230,120,30,0.25)",
       track: "rgba(230,120,30,0.08)",
-      label: "Pesado",
+      label: "Muito sobrecarregado",
       color: "rgba(255,185,110,0.9)",
+      penalty: "Velocidade −6 m · Desvantagem em FOR, DEX e CON",
     };
-  if (pct > 0.5)
+  if (pct > 1 / 3)
     return {
       fill: "linear-gradient(90deg,#c88000,#f0aa20)",
       glow: "rgba(240,170,30,0.4)",
       border: "rgba(240,170,30,0.22)",
       track: "rgba(240,170,30,0.08)",
-      label: "Moderado",
+      label: "Sobrecarregado",
       color: "rgba(255,215,100,0.95)",
+      penalty: "Velocidade −3 m",
     };
   return {
     fill: "linear-gradient(90deg,#1fa863,#2ecc8a)",
     glow: "rgba(46,204,130,0.4)",
     border: "rgba(46,204,130,0.22)",
     track: "rgba(46,204,130,0.08)",
-    label: "Tranquilo",
+    label: "Normal",
     color: "rgba(100,240,170,0.95)",
+    penalty: null,
   };
 }
 
@@ -108,6 +119,10 @@ const EMPTY_FORM = {
   armorType: "" as ArmorType | "",
   armorAc: "10",
   isEquipped: false,
+  weaponDamage: "",
+  weaponDamageType: "",
+  weaponRange: "",
+  weaponPropsText: "",
 };
 
 const inputSx = {
@@ -214,6 +229,7 @@ export default function InventorySection({ characterId }: Props) {
   }
 
   function openEdit(item: InventoryItem) {
+    const props = item.properties as ItemProperties | null;
     setForm({
       name: item.name,
       quantity: String(item.quantity),
@@ -223,6 +239,10 @@ export default function InventorySection({ characterId }: Props) {
       armorType: (item.armorType ?? "") as ArmorType | "",
       armorAc: String(item.armorAc ?? 10),
       isEquipped: item.isEquipped ?? false,
+      weaponDamage: props?.damage ?? "",
+      weaponDamageType: props?.damageType ?? "",
+      weaponRange: props?.range ?? "",
+      weaponPropsText: props?.properties?.join(", ") ?? "",
     });
     setFormError(null);
     setEditItem(item);
@@ -251,6 +271,22 @@ export default function InventorySection({ characterId }: Props) {
     };
   }
 
+  function buildPropertiesPayload(): { properties: ItemProperties | null } {
+    if (form.category !== "Arma") return { properties: null };
+    const hasData = form.weaponDamage || form.weaponDamageType || form.weaponRange || form.weaponPropsText;
+    if (!hasData) return { properties: null };
+    return {
+      properties: {
+        ...(form.weaponDamage && { damage: form.weaponDamage }),
+        ...(form.weaponDamageType && { damageType: form.weaponDamageType }),
+        ...(form.weaponRange && { range: form.weaponRange }),
+        ...(form.weaponPropsText && {
+          properties: form.weaponPropsText.split(",").map((s) => s.trim()).filter(Boolean),
+        }),
+      },
+    };
+  }
+
   async function handleAdd() {
     if (!validateForm()) return;
     setSaving(true);
@@ -263,6 +299,7 @@ export default function InventorySection({ characterId }: Props) {
         category: form.category,
         description: form.description.trim() || undefined,
         ...buildArmorPayload(),
+        ...buildPropertiesPayload(),
       });
       setAddOpen(false);
       await load();
@@ -287,6 +324,7 @@ export default function InventorySection({ characterId }: Props) {
         armorType: form.armorType || null,
         armorAc: form.armorType ? (form.armorType === "shield" ? 2 : Number(form.armorAc)) : null,
         isEquipped: form.isEquipped,
+        ...buildPropertiesPayload(),
       });
       setEditItem(null);
       await load();
@@ -479,6 +517,60 @@ export default function InventorySection({ characterId }: Props) {
           sx={inputSx}
         />
 
+        {/* Campos de arma — visíveis apenas para categoria Arma */}
+        {form.category === "Arma" && (
+          <Box sx={{ p: 1.5, borderRadius: "12px", border: "1px solid rgba(255,90,60,0.2)", bgcolor: "rgba(255,60,30,0.04)" }}>
+            <Typography sx={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,160,130,0.6)", mb: 1.25 }}>
+              ⚔️ Propriedades de Arma
+            </Typography>
+            <Stack spacing={1.25}>
+              <Stack direction="row" spacing={1.5}>
+                <TextField
+                  label="Dano"
+                  value={form.weaponDamage}
+                  onChange={(e) => setForm((f) => ({ ...f, weaponDamage: e.target.value }))}
+                  placeholder="ex: 1d6, 2d4+2"
+                  sx={{ ...inputSx, flex: 1 }}
+                />
+                <Box sx={{ flex: 1 }}>
+                  <Typography sx={{ fontSize: 12, color: "rgba(255,255,255,0.35)", mb: 0.75, ml: 0.25 }}>
+                    Tipo de dano
+                  </Typography>
+                  <Select
+                    value={form.weaponDamageType}
+                    onChange={(e) => setForm((f) => ({ ...f, weaponDamageType: e.target.value }))}
+                    displayEmpty
+                    fullWidth
+                    sx={selectSx}
+                    MenuProps={{ PaperProps: { sx: menuPaperSx } }}
+                  >
+                    <MenuItem value=""><em style={{ opacity: 0.4 }}>Tipo…</em></MenuItem>
+                    {DAMAGE_TYPES.map((t) => (
+                      <MenuItem key={t} value={t}>{t}</MenuItem>
+                    ))}
+                  </Select>
+                </Box>
+              </Stack>
+              <TextField
+                label="Alcance"
+                value={form.weaponRange}
+                onChange={(e) => setForm((f) => ({ ...f, weaponRange: e.target.value }))}
+                placeholder="ex: Corpo a corpo, 20/60 m"
+                fullWidth
+                sx={inputSx}
+              />
+              <TextField
+                label="Propriedades (separadas por vírgula)"
+                value={form.weaponPropsText}
+                onChange={(e) => setForm((f) => ({ ...f, weaponPropsText: e.target.value }))}
+                placeholder="ex: Versátil (1d8), Arremesso, Leve"
+                fullWidth
+                sx={inputSx}
+              />
+            </Stack>
+          </Box>
+        )}
+
         {/* Campos de armadura — visíveis apenas para categorias Armadura e Escudo */}
         {(form.category === "Armadura" || form.category === "Escudo") && (
           <Box sx={{ p: 1.5, borderRadius: "12px", border: "1px solid rgba(80,160,255,0.2)", bgcolor: "rgba(60,120,255,0.05)" }}>
@@ -650,6 +742,27 @@ export default function InventorySection({ characterId }: Props) {
             </Box>
           </Box>
 
+          {/* Encumbrance penalty */}
+          {wui.penalty && (
+            <Box
+              sx={{
+                px: 1.5,
+                py: 0.7,
+                borderRadius: "10px",
+                bgcolor: `color-mix(in srgb, ${wui.glow} 30%, transparent)`,
+                border: `1px solid ${wui.border}`,
+                display: "flex",
+                alignItems: "center",
+                gap: 0.75,
+              }}
+            >
+              <Typography sx={{ fontSize: 13, lineHeight: 1 }}>⚠️</Typography>
+              <Typography sx={{ fontSize: 11.5, fontWeight: 700, color: wui.color }}>
+                {wui.penalty}
+              </Typography>
+            </Box>
+          )}
+
           {/* Item list */}
           {items.length === 0 ? (
             <SkillEmptyBox>
@@ -723,6 +836,7 @@ export default function InventorySection({ characterId }: Props) {
                     <Typography sx={{ fontSize: 11.5, color: "rgba(255,255,255,0.35)" }}>
                       {item.category ?? "Outros"}
                       {item.armorType && item.armorAc != null ? ` · CA ${item.armorType === "shield" ? "+2" : item.armorAc}` : ""}
+                      {item.properties?.damage ? ` · ${item.properties.damage}${item.properties.damageType ? ` ${item.properties.damageType}` : ""}` : ""}
                       {item.weight > 0 ? ` · ${item.weight} kg` : ""}
                     </Typography>
                   </Box>

@@ -61,6 +61,7 @@ function catColor(cat: string): string {
   return CATEGORIES.find((c) => c.id === cat)?.color ?? "rgba(255,255,255,0.4)";
 }
 
+
 // ─── form dialog ─────────────────────────────────────────────────────────────
 
 type FormState = {
@@ -299,6 +300,7 @@ export default function PriceTable({ isMaster }: Props) {
     setItems((prev) => prev.filter((i) => i.id !== deleting.id));
     setDeleting(null);
   }
+
 
   const cellSx = {
     borderColor: "rgba(255,255,255,0.05)",

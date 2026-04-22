@@ -2,6 +2,13 @@ import { http } from "../../shared/http/http";
 
 export type ArmorType = "light" | "medium" | "heavy" | "shield";
 
+export type ItemProperties = {
+  damage?: string;
+  damageType?: string;
+  range?: string;
+  properties?: string[];
+};
+
 export type InventoryItem = {
   id: number;
   name: string;
@@ -12,6 +19,7 @@ export type InventoryItem = {
   armorType: ArmorType | null;
   armorAc: number | null;
   isEquipped: boolean;
+  properties: ItemProperties | null;
 };
 
 export type InventoryResponse = {
@@ -29,6 +37,7 @@ export type InventoryItemPayload = {
   armorType?: ArmorType | null;
   armorAc?: number | null;
   isEquipped?: boolean;
+  properties?: ItemProperties | null;
 };
 
 export async function getInventory(characterId: number | string): Promise<InventoryResponse> {
