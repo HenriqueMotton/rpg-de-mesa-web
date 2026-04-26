@@ -401,6 +401,29 @@ export default function GrimorioSection({ characterId, classSpells = [], charact
   }
 
   async function handleTogglePrepared(spell: CharacterSpell) {
+    // Sistema 'prepared' (Druida, Clérico, Paladino): a magia não pertence ao personagem —
+    // é escolhida da lista completa da classe a cada descanso longo.
+    // Desmarcar = remover da lista; ela volta a ser gerenciada pelo modal de preparação.
+    if (spell.prepared && progression?.system === 'prepared' && !spell.isCustom && !spell.isRacial) {
+      try {
+        await deleteSpell(spell.id);
+        await load();
+      } catch { /* silently */ }
+      return;
+    }
+
+    // Bloqueio: só aplica para magias de classe (não raciais, não customizadas)
+    if (!spell.prepared && !spell.isCustom && !spell.isRacial && maxPrepCount > 0) {
+      if (currentPrepared.length >= maxPrepCount) {
+        const mod = attrMod(prepAttrValue);
+        setError(
+          `Limite de preparação atingido: ${maxPrepCount} magia${maxPrepCount !== 1 ? "s" : ""} ` +
+          `(nível ${characterNivel} + mod. ${mod >= 0 ? "+" : ""}${mod}). ` +
+          `Desmarque uma magia antes de preparar outra.`
+        );
+        return;
+      }
+    }
     try {
       await updateSpell(spell.id, { prepared: !spell.prepared });
       await load();
@@ -674,7 +697,7 @@ export default function GrimorioSection({ characterId, classSpells = [], charact
     ? calcMaxPrepared(progression, characterNivel, prepAttrValue)
     : 0;
 
-  const currentPrepared = spells.filter((s) => s.prepared && !s.isRacial && !s.isCustom);
+  const currentPrepared = spells.filter((s) => s.prepared && s.level > 0 && !s.isRacial && !s.isCustom);
 
   // Available class spells for the preparation modal
   const classSpellsForPrep: DndSpellData[] = expected
@@ -729,6 +752,22 @@ export default function GrimorioSection({ characterId, classSpells = [], charact
   }
 
   async function handlePrepConfirm(preparedNames: string[]) {
+    // Validação de segurança: conta magias de nível antes de salvar
+    if (maxPrepCount > 0) {
+      const leveledCount = preparedNames.filter((name) => {
+        const inCatalog = classSpellsForPrep.find((s) => s.name === name);
+        if (inCatalog) return inCatalog.level > 0;
+        const inCharacter = spells.find((s) => s.name === name);
+        return inCharacter ? inCharacter.level > 0 : true;
+      }).length;
+      if (leveledCount > maxPrepCount) {
+        setError(
+          `Não é possível preparar ${leveledCount} magias — limite é ${maxPrepCount} ` +
+          `(nível ${characterNivel} + mod. ${attrMod(prepAttrValue) >= 0 ? "+" : ""}${attrMod(prepAttrValue)}).`
+        );
+        return;
+      }
+    }
     setPrepSaving(true);
     try {
       // Add any new spells from catalog that aren't in grimoire yet
@@ -1338,22 +1377,41 @@ export default function GrimorioSection({ characterId, classSpells = [], charact
                               </Typography>
                             </Box>
 
-                            {level > 0 && (
-                              <Tooltip title={spell.prepared ? "Desmarcar preparada" : "Marcar como preparada"} placement="top">
-                                <IconButton
-                                  size="small"
-                                  onClick={(e) => { e.stopPropagation(); handleTogglePrepared(spell); }}
-                                  sx={{
-                                    color: spell.prepared
-                                      ? "rgba(140,100,255,0.8)"
-                                      : "rgba(255,255,255,0.2)",
-                                    "&:hover": { color: "rgba(160,130,255,0.9)", bgcolor: "rgba(120,85,255,0.12)" },
-                                  }}
+                            {level > 0 && (() => {
+                              const atLimit = maxPrepCount > 0
+                                && !spell.isCustom && !spell.isRacial
+                                && !spell.prepared
+                                && currentPrepared.length >= maxPrepCount;
+                              return (
+                                <Tooltip
+                                  title={
+                                    atLimit
+                                      ? `Limite atingido (${maxPrepCount}/${maxPrepCount})`
+                                      : spell.prepared ? "Desmarcar preparada" : "Marcar como preparada"
+                                  }
+                                  placement="top"
                                 >
-                                  <AutoStoriesRoundedIcon sx={{ fontSize: 15 }} />
-                                </IconButton>
-                              </Tooltip>
-                            )}
+                                  <span>
+                                    <IconButton
+                                      size="small"
+                                      disabled={atLimit}
+                                      onClick={(e) => { e.stopPropagation(); handleTogglePrepared(spell); }}
+                                      sx={{
+                                        color: spell.prepared
+                                          ? "rgba(140,100,255,0.8)"
+                                          : atLimit
+                                            ? "rgba(255,255,255,0.1)"
+                                            : "rgba(255,255,255,0.2)",
+                                        "&:hover": { color: "rgba(160,130,255,0.9)", bgcolor: "rgba(120,85,255,0.12)" },
+                                        "&.Mui-disabled": { color: "rgba(255,255,255,0.1)" },
+                                      }}
+                                    >
+                                      <AutoStoriesRoundedIcon sx={{ fontSize: 15 }} />
+                                    </IconButton>
+                                  </span>
+                                </Tooltip>
+                              );
+                            })()}
 
                             {isMaster && (
                               <>

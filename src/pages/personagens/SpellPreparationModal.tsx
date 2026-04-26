@@ -142,9 +142,23 @@ export default function SpellPreparationModal({ open, target, saving, onClose, o
 
   const { className = "", system = 'prepared', maxPrepared = 0, maxSpellLevel = 0, availableSpells = [] } = target ?? {};
 
-  const leveledSpells = availableSpells.filter((s) => s.level > 0);
   const cantripSpells = availableSpells.filter((s) => s.level === 0);
-  const selectedLeveled = [...selectedNames].filter((n) => leveledSpells.some((s) => s.name === n)).length;
+
+  // Mapa nome → nível: cobre tanto o catálogo quanto as magias já preparadas
+  // (que podem não estar em availableSpells se o nível do personagem mudou)
+  const spellLevelMap = useMemo(() => {
+    const map = new Map<string, number>();
+    (target?.currentPrepared ?? []).forEach((s) => map.set(s.name, s.level));
+    availableSpells.forEach((s) => map.set(s.name, s.level)); // catálogo tem precedência
+    return map;
+  }, [availableSpells, target?.currentPrepared]);
+
+  // Conta TODAS as magias de nível selecionadas, não só as do catálogo visível
+  const selectedLeveled = useMemo(
+    () => [...selectedNames].filter((n) => (spellLevelMap.get(n) ?? 1) > 0).length,
+    [selectedNames, spellLevelMap],
+  );
+
   const canSelectMore = selectedLeveled < maxPrepared;
 
   const filteredSpells = useMemo(() => {
@@ -157,13 +171,20 @@ export default function SpellPreparationModal({ open, target, saving, onClose, o
   }, [availableSpells, search, levelFilter]);
 
   function toggle(spell: DndSpellData) {
-    const isCantrip = spell.level === 0;
     setSelectedNames((prev) => {
       const next = new Set(prev);
       if (next.has(spell.name)) {
         next.delete(spell.name);
-      } else if (isCantrip || canSelectMore) {
+      } else if (spell.level === 0) {
+        // Truques: sempre podem ser alternados
         next.add(spell.name);
+      } else {
+        // Magia de nível: recalcula o total a partir do estado mais recente (prev),
+        // evitando o bug de closure obsoleta com cliques rápidos
+        const currentLeveled = [...prev].filter((n) => (spellLevelMap.get(n) ?? 1) > 0).length;
+        if (currentLeveled < maxPrepared) {
+          next.add(spell.name);
+        }
       }
       return next;
     });

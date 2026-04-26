@@ -22,8 +22,20 @@ export type CustomNpc = {
 
 export type CustomNpcPayload = Partial<Omit<CustomNpc, "id" | "createdAt">> & { name: string };
 
+export type CustomNpcPage = { data: CustomNpc[]; total: number };
+
 export async function listCustomNpcs(): Promise<CustomNpc[]> {
-  const { data } = await http.get<CustomNpc[]>("/custom-npcs");
+  const { data } = await http.get<CustomNpcPage>("/custom-npcs");
+  return data.data;
+}
+
+export async function listCustomNpcsPaginated(params: {
+  page: number;
+  limit: number;
+  search?: string;
+  status?: string;
+}): Promise<CustomNpcPage> {
+  const { data } = await http.get<CustomNpcPage>("/custom-npcs", { params });
   return data;
 }
 

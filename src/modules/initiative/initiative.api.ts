@@ -8,6 +8,9 @@ export type InitiativeEntry = {
   // Monster-specific
   isMonster?: boolean;
   monsterId?: string;
+  // NPC-specific
+  isNpc?: boolean;
+  npcId?: number;
   monsterType?: string;
   size?: string;
   cr?: string;
