@@ -20,6 +20,7 @@ import LocalOfferRoundedIcon from "@mui/icons-material/LocalOfferRounded";
 import BugReportRoundedIcon from "@mui/icons-material/BugReportRounded";
 import AssignmentIndRoundedIcon from "@mui/icons-material/AssignmentIndRounded";
 import PsychologyRoundedIcon from "@mui/icons-material/PsychologyRounded";
+import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
 import { Glass, Noise, OrbSide, OrbTop, Page, PageLabel, PageTitle } from "./personagens/ViewCharacter.styles";
 import InitiativeManager from "./personagens/InitiativeManager";
 import RestManager from "./personagens/RestManager";
@@ -30,8 +31,9 @@ import BugReportsPanel from "./personagens/BugReportsPanel";
 import MasterCharacterPanel from "./personagens/MasterCharacterPanel";
 import PsychologyMasterPanel from "./personagens/PsychologyMasterPanel";
 import CustomNpcPanel from "./personagens/CustomNpcPanel";
+import SanidadeTracker from "./personagens/SanidadeTracker";
 
-type Section = "initiative" | "rest" | "grimoire" | "npc" | "prices" | "bugs" | "characters" | "psychology";
+type Section = "initiative" | "rest" | "grimoire" | "npc" | "prices" | "bugs" | "characters" | "psychology" | "sanidade";
 
 const MENU_ITEMS: { id: Section; label: string; icon: React.ReactNode }[] = [
   {
@@ -68,6 +70,11 @@ const MENU_ITEMS: { id: Section; label: string; icon: React.ReactNode }[] = [
     id: "psychology",
     label: "Psicologia",
     icon: <PsychologyRoundedIcon sx={{ fontSize: 18 }} />,
+  },
+  {
+    id: "sanidade",
+    label: "Sanidade (Âmbar)",
+    icon: <AutoAwesomeRoundedIcon sx={{ fontSize: 18 }} />,
   },
   {
     id: "bugs",
@@ -120,6 +127,7 @@ function SectionContent({ section }: { section: Section }) {
   if (section === "bugs")        return <BugReportsPanel />;
   if (section === "characters")  return <MasterCharacterPanel />;
   if (section === "psychology")  return <PsychologyMasterPanel />;
+  if (section === "sanidade")    return <SanidadeTracker />;
   return null;
 }
 

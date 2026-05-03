@@ -20,12 +20,17 @@ export default function ClassePage() {
   const navigate = useNavigate();
 
   const [cls, setCls] = useState<any>(null);
+  const [nivel, setNivel] = useState<number>(1);
   const [loading, setLoading] = useState(true);
+  const [showAll, setShowAll] = useState(false);
 
   useEffect(() => {
     if (!id) return;
     getCharacter(id)
-      .then((c) => setCls((c as any).dndClass ?? null))
+      .then((c) => {
+        setCls((c as any).dndClass ?? null);
+        setNivel(Number((c as any).nivel ?? 1));
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [id]);
@@ -132,52 +137,71 @@ export default function ClassePage() {
                 })()}
 
                 {/* Features */}
-                {cls.features?.length > 0 && (
-                  <Box>
-                    <Typography
-                      sx={{
-                        fontSize: 10.5,
-                        fontWeight: 800,
-                        letterSpacing: "0.1em",
-                        textTransform: "uppercase",
-                        color: "rgba(255,255,255,0.28)",
-                        mb: 1,
-                      }}
-                    >
-                      Habilidades da classe
-                    </Typography>
-                    <Stack spacing={0.75}>
-                      {cls.features.map((f: any, i: number) => (
-                        <Box
-                          key={i}
-                          sx={{
-                            borderRadius: "12px",
-                            px: 1.75,
-                            py: 1.25,
-                            bgcolor: "rgba(120,85,255,0.06)",
-                            border: "1px solid rgba(120,85,255,0.14)",
-                          }}
-                        >
-                          <Typography
+                {cls.features?.length > 0 && (() => {
+                  const available = cls.features.filter((f: any) => !f.unlockLevel || f.unlockLevel <= nivel);
+                  const locked    = cls.features.filter((f: any) => f.unlockLevel && f.unlockLevel > nivel);
+                  const displayed = showAll ? cls.features : available;
+                  return (
+                    <Box>
+                      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+                        <Typography sx={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,255,255,0.28)" }}>
+                          Habilidades da classe
+                        </Typography>
+                        {locked.length > 0 && (
+                          <Box
+                            component="button"
+                            onClick={() => setShowAll((v) => !v)}
                             sx={{
-                              fontWeight: 800,
-                              fontSize: 13.5,
-                              color: "rgba(200,180,255,0.9)",
-                              mb: 0.35,
+                              background: "none", border: "none", cursor: "pointer", padding: 0,
+                              fontSize: 11, fontWeight: 700, color: showAll ? "rgba(200,180,255,0.7)" : "rgba(255,255,255,0.28)",
+                              textDecoration: "underline", textUnderlineOffset: "2px",
                             }}
                           >
-                            {f.name}
-                          </Typography>
-                          <Typography
-                            sx={{ fontSize: 13, color: "rgba(255,255,255,0.48)", lineHeight: 1.6 }}
-                          >
-                            {f.description}
-                          </Typography>
-                        </Box>
-                      ))}
-                    </Stack>
-                  </Box>
-                )}
+                            {showAll ? "Ocultar futuras" : `+${locked.length} futuras`}
+                          </Box>
+                        )}
+                      </Stack>
+                      <Stack spacing={0.75}>
+                        {displayed.map((f: any, i: number) => {
+                          const isLocked = f.unlockLevel && f.unlockLevel > nivel;
+                          return (
+                            <Box
+                              key={i}
+                              sx={{
+                                borderRadius: "12px",
+                                px: 1.75,
+                                py: 1.25,
+                                bgcolor: isLocked ? "rgba(255,255,255,0.015)" : "rgba(120,85,255,0.06)",
+                                border: isLocked ? "1px solid rgba(255,255,255,0.06)" : "1px solid rgba(120,85,255,0.14)",
+                                opacity: isLocked ? 0.6 : 1,
+                              }}
+                            >
+                              <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.35 }}>
+                                <Typography sx={{ fontWeight: 800, fontSize: 13.5, color: isLocked ? "rgba(255,255,255,0.4)" : "rgba(200,180,255,0.9)", flex: 1 }}>
+                                  {f.name}
+                                </Typography>
+                                {f.unlockLevel && (
+                                  <Box sx={{
+                                    px: 0.75, py: 0.2, borderRadius: "6px", flexShrink: 0,
+                                    bgcolor: isLocked ? "rgba(255,255,255,0.05)" : "rgba(120,85,255,0.15)",
+                                    border: isLocked ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(120,85,255,0.3)",
+                                  }}>
+                                    <Typography sx={{ fontSize: 10, fontWeight: 800, color: isLocked ? "rgba(255,255,255,0.3)" : "rgba(200,180,255,0.8)" }}>
+                                      {isLocked ? `🔒 Nível ${f.unlockLevel}` : `Nível ${f.unlockLevel}`}
+                                    </Typography>
+                                  </Box>
+                                )}
+                              </Stack>
+                              <Typography sx={{ fontSize: 13, color: isLocked ? "rgba(255,255,255,0.28)" : "rgba(255,255,255,0.55)", lineHeight: 1.6 }}>
+                                {f.description}
+                              </Typography>
+                            </Box>
+                          );
+                        })}
+                      </Stack>
+                    </Box>
+                  );
+                })()}
               </Stack>
             )}
           </Box>

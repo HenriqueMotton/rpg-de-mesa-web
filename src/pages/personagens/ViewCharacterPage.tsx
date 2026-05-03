@@ -53,7 +53,13 @@ import { getInventory, type InventoryItem as InvItem } from "../../modules/inven
 import SpellQuickPanel from "./SpellQuickPanel";
 import InitiativeWidget from "./InitiativeWidget";
 import TraumaSection from "./TraumaSection";
+import SecaoMental from "./SecaoMental";
 import { useCharactersStore } from "../../modules/characters/characters.store";
+import { getSettings } from "../../modules/settings/settings.api";
+import { saveSanidade } from "../../modules/sanidade/sanidade.api";
+import { calcularHPPsiquico, calcularEstagio, normalizarSanidade } from "../../modules/sanidade/sanidade.utils";
+import type { SanidadePersonagem } from "../../modules/sanidade/sanidade.types";
+
 
 
 type AttrKey = "forca" | "destreza" | "constituicao" | "inteligencia" | "sabedoria" | "carisma";
@@ -395,13 +401,18 @@ export default function ViewCharacterPage() {
   const [profAnchor,       setProfAnchor]       = useState<HTMLElement | null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
+  const [sanidadeEnabled, setSanidadeEnabled] = useState(false);
+
   useEffect(() => {
     let alive = true;
     (async () => {
       setLoading(true); setError(null);
       try {
         if (!id) throw new Error("ID do personagem não informado.");
-        const data = await getCharacter(id);
+        const [data] = await Promise.all([
+          getCharacter(id),
+          getSettings().then((s) => { if (alive) setSanidadeEnabled(s.sanidadeEnabled); }).catch(() => {}),
+        ]);
         if (!alive) return;
         setOriginal(data); setDraft(data);
         setSelected(data);
@@ -662,7 +673,31 @@ export default function ViewCharacterPage() {
     const conMod = getModifier(getAttrsFrom(draft).constituicao);
     const hpGain = Math.max(1, roll + conMod);
     const newMaxHp = (draft.maxHealth ?? 0) + hpGain;
-    setDraft({ ...draft, maxHealth: newMaxHp });
+
+    // Recalcular HP Psíquico se o personagem tiver sanidade ativa
+    const existingSanidade = (draft as any).sanidade as SanidadePersonagem | null;
+    if (existingSanidade && sanidadeEnabled) {
+      const attrs = getAttrsFrom(draft);
+      const novoNivel = (draft as any).nivel ?? 1;
+      const novoHPPsi = calcularHPPsiquico(
+        attrs.sabedoria,
+        attrs.constituicao,
+        novoNivel,
+        existingSanidade.modificadores,
+      );
+      const danoAjustado = Math.min(existingSanidade.danoAcumulado, novoHPPsi);
+      const novaSanidade: SanidadePersonagem = {
+        ...normalizarSanidade(existingSanidade),
+        hpPsiquicoTotal: novoHPPsi,
+        danoAcumulado: danoAjustado,
+        estagioAtual: calcularEstagio(danoAjustado, novoHPPsi),
+      };
+      setDraft({ ...draft, maxHealth: newMaxHp, sanidade: novaSanidade } as any);
+      if (id) saveSanidade(id, novaSanidade).catch(() => {});
+    } else {
+      setDraft({ ...draft, maxHealth: newMaxHp });
+    }
+
     setHpLevelUpOpen(false);
     setHpLevelUpRoll("");
   }
@@ -1123,6 +1158,14 @@ export default function ViewCharacterPage() {
                   </Stack>
                 </Box>
 
+
+                {/* ── SANIDADE (Âmbar) ────────────────────────── */}
+                {sanidadeEnabled && (draft as any)?.exposicaoAmbar?.barraAtiva && (
+                  <SecaoMental
+                    exposicao={(draft as any).exposicaoAmbar}
+                    sanidade={(draft as any)?.sanidade ?? null}
+                  />
+                )}
 
                 {/* ── MOEDAS ─────────────────────────────────────── */}
                 <Box
