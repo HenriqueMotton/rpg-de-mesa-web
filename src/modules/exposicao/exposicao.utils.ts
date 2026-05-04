@@ -95,6 +95,7 @@ function inicializarSanidade(p: PersonagemParaRegistro): SanidadePersonagem {
     modificadores: [],
     historicoEventos: [],
     temAncoraTemporalAtiva: false,
+    traumaMultiplicador: 1,
     rituaisConsecutivos: 0,
     gatilhosUsadosNaSessao: [],
     memoriaAncoraUsadaPorEstagio: {},
